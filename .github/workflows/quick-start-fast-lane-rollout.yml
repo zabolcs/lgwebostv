@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# retry: BusyBox-safe guard restart
+
 jobs:
   rollout:
     runs-on: [self-hosted, Linux, X64]
