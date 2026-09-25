@@ -64,6 +64,8 @@ jobs:
           run_luna boot com.webos.bootManager/getBootStatus '{}'
           run_luna power com.webos.service.tvpower/power/getPowerState '{}'
           run_luna foreground com.webos.service.applicationmanager/getForegroundAppInfo '{}'
+          run_luna smartdemo com.palm.activitymanager/getDetails '{"activityName":"demo.smartdemokit.launch","current":true,"internal":true}' || true
+          "${SSH[@]}" "grep -R -n -E 'demo.smartdemokit|smartdemokit|applicationmanager/launch|applicationManager/launch|getBootStatus' /usr/share/luna-service2 /var/luna-service2 /usr/palm/services 2>/dev/null | head -240 || true" > "$TMP/factory-refs.txt"
           "${SSH[@]}" 'cat /proc/uptime' > "$TMP/uptime.txt"
 
           python3 - "$TMP" <<'PY'
@@ -102,6 +104,10 @@ jobs:
           boot = load("boot.json")
           power = load("power.json")
           foreground = load("foreground.json")
+          try:
+              smartdemo = load("smartdemo.json")
+          except SystemExit:
+              smartdemo = {}
 
           uptime_raw = (root / "uptime.txt").read_text().strip().split()[0]
           uptime = float(uptime_raw)
@@ -147,4 +153,11 @@ jobs:
           app_id = foreground.get("appId")
           if app_id is not None:
               print("FOREGROUND_APP=" + str(app_id)[:160])
+          if smartdemo:
+              print("SMARTDEMO_DETAILS=" + json.dumps(smartdemo, separators=(",", ":")))
+          refs = (root / "factory-refs.txt").read_text(encoding="utf-8", errors="replace")
+          if refs:
+              print("FACTORY_REFS_BEGIN")
+              print(refs[-16000:])
+              print("FACTORY_REFS_END")
           PY
