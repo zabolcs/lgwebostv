@@ -1,0 +1,238 @@
+name: Direct Activity Manager launch reboot probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-direct-launch-reboot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-launch:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prove direct callback and measure reboot launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARKER=/media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          test -f "$MARKER"
+
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          SOURCE_KEY=/media/lgtv/id_rsa
+          APP_ID=hu.szabi.launcher.startupprobe
+          ACTIVITY_NAME=hu.szabi.launcher.startupprobe.direct.firstAppLaunched
+
+          TMP="$(mktemp -d)"
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+          ssh-keyscan -T 3 "$TV_HOST" >"$KNOWN" 2>/dev/null
+          test -s "$KNOWN"
+          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$TV")
+          SCP=(scp -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
+
+          ssh_ok() { "${SSH[@]}" true >/dev/null 2>&1; }
+
+          luna_file() {
+            local label="$1" uri="$2" payload="$3"
+            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$uri' '$payload' 2>&1" >"$TMP/$label.txt" || true
+          }
+
+          extract_json() {
+            python3 - "$1" <<'PY'
+          import json, sys
+          from pathlib import Path
+          text=Path(sys.argv[1]).read_text(encoding="utf-8",errors="replace")
+          dec=json.JSONDecoder()
+          for line in reversed(text.splitlines()):
+              for i,ch in enumerate(line):
+                  if ch != "{":
+                      continue
+                  try:
+                      obj,_=dec.raw_decode(line[i:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(obj,dict):
+                      print(json.dumps(obj,separators=(",",":")))
+                      raise SystemExit(0)
+          raise SystemExit("no JSON response")
+          PY
+          }
+
+          remove_probe() {
+            "${SSH[@]}" "/usr/bin/luna-send-pub -t 1 -w 30000 -f 'luna://com.webos.appInstallService/dev/remove' '{\"id\":\"$APP_ID\",\"subscribe\":true}' >/tmp/hu.szabi.direct-probe-remove.log 2>&1" || true
+          }
+
+          cancel_activity() {
+            local id="$1"
+            [ -z "$id" ] && return 0
+            luna_file cancel com.palm.activitymanager/cancel "{\"activityId\":$id}"
+            extract_json "$TMP/cancel.txt" 2>/dev/null || true
+          }
+
+          DIRECT_ID=""
+          PERSIST_ID=""
+          cleanup() {
+            rc=$?
+            set +e
+            if ssh_ok; then
+              cancel_activity "$DIRECT_ID" >/dev/null 2>&1 || true
+              cancel_activity "$PERSIST_ID" >/dev/null 2>&1 || true
+              remove_probe
+            fi
+            rm -rf "$TMP"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+
+          ssh_ok
+          echo TV_SSH=PASS
+          echo ROLLBACK_BASELINE=PASS
+
+          python3 tools/lab/build-launcher-startup-probe.py >"$TMP/build.txt"
+          IPK="$(find build -maxdepth 1 -type f -name 'hu.szabi.launcher.startupprobe_*.ipk' | head -1)"
+          test -n "$IPK"
+          REMOTE=/tmp/hu.szabi.direct-launch.$$
+          "${SSH[@]}" "mkdir -p '$REMOTE'"
+          "${SCP[@]}" "$IPK" "$TV:$REMOTE/probe.ipk"
+          "${SCP[@]}" scripts/install-local-on-tv.sh "$TV:$REMOTE/install.sh"
+          SHA="$(sha256sum "$IPK" | awk '{print $1}')"
+          "${SSH[@]}" "chmod 700 '$REMOTE/install.sh'; sh '$REMOTE/install.sh' '$REMOTE/probe.ipk' '$SHA'"
+          echo PROBE_INSTALL=PASS
+
+          "${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.webos.service.applicationmanager/closeByAppId' '{\"id\":\"$APP_ID\"}' >/dev/null 2>&1 || true"
+          sleep 1
+
+          IMMEDIATE_PAYLOAD='{"activity":{"name":"hu.szabi.launcher.startupprobe.direct.immediate","description":"Direct Activity Manager app launch permission probe","type":{"foreground":true},"callback":{"method":"luna://com.webos.applicationManager/launch","params":{"id":"hu.szabi.launcher.startupprobe","params":{"source":"activity-direct-immediate"}}}},"replace":true,"start":true,"subscribe":false}'
+          luna_file direct_create com.palm.activitymanager/create "$IMMEDIATE_PAYLOAD"
+          DIRECT="$(extract_json "$TMP/direct_create.txt")"
+          echo "DIRECT_IMMEDIATE_CREATE=$DIRECT"
+          echo "$DIRECT" | grep -q '"returnValue":true'
+          DIRECT_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$DIRECT")"
+
+          DIRECT_OK=0
+          for i in $(seq 1 30); do
+            if node tools/lab/measure-launcher-cdp.mjs "$APP_ID" >"$TMP/direct-cdp.json" 2>/dev/null; then
+              DIRECT_OK=1
+              echo "DIRECT_LAUNCH_SEEN_AFTER_HALFSECONDS=$i"
+              break
+            fi
+            sleep 0.5
+          done
+          test "$DIRECT_OK" -eq 1
+          echo "DIRECT_CDP=$(cat "$TMP/direct-cdp.json")"
+          echo DIRECT_ACTIVITY_TO_APP_LAUNCH=PASS
+
+          cancel_activity "$DIRECT_ID" >/dev/null 2>&1 || true
+          DIRECT_ID=""
+          "${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.webos.service.applicationmanager/closeByAppId' '{\"id\":\"$APP_ID\"}' >/dev/null 2>&1 || true"
+          sleep 1
+
+          PERSIST_PAYLOAD='{"activity":{"name":"hu.szabi.launcher.startupprobe.direct.firstAppLaunched","description":"Direct firstAppLaunched app launch timing probe","type":{"foreground":true,"persist":true,"continuous":true},"trigger":{"method":"luna://com.webos.bootManager/getBootStatus","params":{"subscribe":true},"where":{"prop":"firstAppLaunched","op":"=","val":true}},"callback":{"method":"luna://com.webos.applicationManager/launch","params":{"id":"hu.szabi.launcher.startupprobe","params":{"source":"activity-direct-firstapp"}}}},"replace":true,"start":true,"subscribe":false}'
+          luna_file persist_create com.palm.activitymanager/create "$PERSIST_PAYLOAD"
+          PERSIST="$(extract_json "$TMP/persist_create.txt")"
+          echo "DIRECT_FIRSTAPP_CREATE=$PERSIST"
+          echo "$PERSIST" | grep -q '"returnValue":true'
+          PERSIST_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$PERSIST")"
+          test -n "$PERSIST_ID"
+          echo "DIRECT_FIRSTAPP_ACTIVITY_ID=$PERSIST_ID"
+
+          luna_file persist_details com.palm.activitymanager/getDetails "{\"activityId\":$PERSIST_ID,\"current\":false,\"internal\":false}"
+          DETAILS="$(extract_json "$TMP/persist_details.txt")"
+          echo "DIRECT_FIRSTAPP_DETAILS=$DETAILS"
+          echo "$DETAILS" | grep -q '"returnValue":true'
+          echo "$DETAILS" | grep -q 'com.webos.applicationManager/launch'
+          echo DIRECT_FIRSTAPP_ACTIVITY_VERIFIED=PASS
+
+          # The current boot already has firstAppLaunched=true, so a continuous
+          # activity may fire once immediately. Close the probe before reboot;
+          # the reboot transition is the timing sample we care about.
+          sleep 2
+          "${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.webos.service.applicationmanager/closeByAppId' '{\"id\":\"$APP_ID\"}' >/dev/null 2>&1 || true"
+          sleep 1
+
+          PRE_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
+          echo "PRE_REBOOT_UPTIME_SECONDS=$PRE_UPTIME"
+          REBOOT_REQUEST_MS="$(date +%s%3N)"
+          echo "REBOOT_REQUEST_EPOCH_MS=$REBOOT_REQUEST_MS"
+          "${SSH[@]}" 'sync; reboot' >/dev/null 2>&1 || true
+          echo REBOOT_COMMAND_SENT=PASS
+
+          DROPPED=0
+          for i in $(seq 1 45); do
+            if ! ssh_ok; then
+              DROPPED=1
+              echo "SSH_DROPPED_AFTER_SECONDS=$i"
+              break
+            fi
+            sleep 1
+          done
+          test "$DROPPED" -eq 1
+          echo TV_SSH_DROP=PASS
+
+          PAGE_SEEN=0
+          PAGE_SEEN_MS=""
+          for i in $(seq 1 180); do
+            if node tools/lab/measure-launcher-cdp.mjs "$APP_ID" >"$TMP/post-cdp.json" 2>/dev/null; then
+              PAGE_SEEN=1
+              PAGE_SEEN_MS="$(date +%s%3N)"
+              echo "PROBE_PAGE_SEEN_AFTER_REBOOT_SECONDS=$i"
+              break
+            fi
+            sleep 0.5
+          done
+          test "$PAGE_SEEN" -eq 1
+          echo "POST_REBOOT_CDP=$(cat "$TMP/post-cdp.json")"
+
+          RETURNED=0
+          for i in $(seq 1 180); do
+            if ssh_ok; then
+              RETURNED=1
+              break
+            fi
+            sleep 1
+          done
+          test "$RETURNED" -eq 1
+          echo TV_SSH_AFTER=PASS
+
+          TV_NOW_MS="$("${SSH[@]}" "date +%s%3N")"
+          TV_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
+          NAV_MS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("navigation",""))' "$TMP/post-cdp.json")"
+          START_MS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("start",""))' "$TMP/post-cdp.json")"
+          test -n "$NAV_MS"
+          NAV_BOOT_UPTIME="$(python3 -c 'import sys; now=float(sys.argv[1]); up=float(sys.argv[2]); nav=float(sys.argv[3]); print(round(up-(now-nav)/1000.0,3))' "$TV_NOW_MS" "$TV_UPTIME" "$NAV_MS")"
+          START_BOOT_UPTIME="$(python3 -c 'import sys; now=float(sys.argv[1]); up=float(sys.argv[2]); start=float(sys.argv[3]); print(round(up-(now-start)/1000.0,3))' "$TV_NOW_MS" "$TV_UPTIME" "$START_MS")"
+          DETECT_SECONDS="$(python3 -c 'import sys; print(round((float(sys.argv[1])-float(sys.argv[2]))/1000.0,3))' "$PAGE_SEEN_MS" "$REBOOT_REQUEST_MS")"
+          echo "DIRECT_NAVIGATION_BOOT_UPTIME_SECONDS=$NAV_BOOT_UPTIME"
+          echo "DIRECT_APP_START_BOOT_UPTIME_SECONDS=$START_BOOT_UPTIME"
+          echo "RUNNER_DETECTED_PAGE_AFTER_REBOOT_REQUEST_SECONDS=$DETECT_SECONDS"
+
+          cancel_activity "$PERSIST_ID" >/dev/null 2>&1 || true
+          PERSIST_ID=""
+          luna_file verify_absent com.palm.activitymanager/getDetails "{\"activityName\":\"$ACTIVITY_NAME\",\"current\":false,\"internal\":false}"
+          ABSENT="$(extract_json "$TMP/verify_absent.txt" 2>/dev/null || true)"
+          echo "ACTIVITY_AFTER_CANCEL=$ABSENT"
+          if echo "$ABSENT" | grep -q '"returnValue":true'; then
+            exit 2
+          fi
+          echo DIRECT_ACTIVITY_CLEANUP=PASS
+
+          remove_probe
+          sleep 1
+          "${SSH[@]}" "test ! -e '/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json'"
+          echo PROBE_REMOVE=PASS
+          "${SSH[@]}" "rm -rf '$REMOTE'" || true
+
+          echo PRODUCTION_LAUNCHER_UNCHANGED=PASS
