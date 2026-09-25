@@ -2,6 +2,10 @@ name: Guarded EIM autostart boot measurement
 
 on:
   workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/eim-autostart-reboot-test.yml'
 
 permissions:
   contents: read
@@ -16,17 +20,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate guarded test
+      - name: Validate production EIM integration
         shell: bash
         run: |
           set -euo pipefail
           bash -n tools/lab/eim-autostart-reboot-test.sh
-          python3 tools/lab/build-eim-autostart-probe.py
-          test -f build/hu.szabi.launcher.eimprobe_0.0.1_all.ipk
-          echo GUARDED_TEST_VALIDATION=PASS
+          python3 scripts/build-all.py
+          test -f build/hu.szabi.launcher_0.3.12_all.ipk
+          echo PRODUCTION_EIM_VALIDATION=PASS
 
-      - name: Run one-shot EIM boot measurement
+      - name: Run guarded production EIM boot integration
         shell: bash
+        env:
+          PRODUCTION_MODE: "1"
+          KEEP_EIM_ON_SUCCESS: "1"
+          APP_ID: "hu.szabi.launcher"
+          VERSION: "0.3.12"
         run: |
           set -euo pipefail
           bash tools/lab/eim-autostart-reboot-test.sh
