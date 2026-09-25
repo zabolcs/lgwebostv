@@ -2,6 +2,10 @@ name: Inspect LGTV checkpoint
 
 on:
   workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/inspect-checkpoint.yml'
 
 permissions:
   contents: read
