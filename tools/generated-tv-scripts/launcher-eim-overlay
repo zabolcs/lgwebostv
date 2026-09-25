@@ -1,0 +1,70 @@
+#!/bin/sh
+# Preserve hu.szabi.launcher as the cold-boot EIM first app while allowing
+# normal runtime input changes in a persistent overlay.
+BASE=/var/lib/webosbrew/launcher-eim
+ENABLED="$BASE/enabled"
+RUNTIME="$BASE/runtime"
+FROZEN="$BASE/frozen-view"
+LOG=/tmp/hu.szabi.launcher-eim-overlay.log
+APP=hu.szabi.launcher
+
+log() {
+  printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$LOG"
+}
+
+[ -f "$ENABLED" ] || exit 0
+[ -f "$RUNTIME/lastinput" ] || { log "runtime lastinput missing"; exit 2; }
+[ -f "$RUNTIME/eim_device_db.json" ] || { log "runtime device db missing"; exit 2; }
+
+# Idempotent when startup.sh or run-parts is invoked more than once.
+if findmnt /var/lib/eim >/dev/null 2>&1; then
+  source=$(findmnt -n -o SOURCE /var/lib/eim 2>/dev/null)
+  [ "$source" = "$RUNTIME" ] || { log "unexpected existing /var/lib/eim mount: $source"; exit 3; }
+  log "runtime overlay already mounted"
+  exit 0
+fi
+
+mkdir -p "$FROZEN"
+
+# Keep a read-only view of the real persistent boot EIM for verification and
+# recovery before hiding it under the runtime overlay.
+if ! findmnt "$FROZEN" >/dev/null 2>&1; then
+  mount --bind /var/lib/eim "$FROZEN" || { log "frozen-view bind failed"; exit 4; }
+  mount -o bind,remount,ro "$FROZEN" || {
+    umount "$FROZEN" >/dev/null 2>&1 || true
+    log "frozen-view read-only remount failed"
+    exit 5
+  }
+fi
+
+grep -q '"appId"[[:space:]]*:[[:space:]]*"hu.szabi.launcher"' "$FROZEN/lastinput" || {
+  log "boot EIM is not frozen on launcher"
+  umount "$FROZEN" >/dev/null 2>&1 || true
+  exit 6
+}
+
+mount --bind "$RUNTIME" /var/lib/eim || {
+  log "runtime overlay bind failed"
+  umount "$FROZEN" >/dev/null 2>&1 || true
+  exit 7
+}
+log "runtime overlay mounted"
+
+# The boot EIM intentionally contains the launcher as a virtual input. After
+# the runtime overlay is active, remove that virtual device from the live EIM
+# so ordinary app/HDMI use cannot rewrite the hidden boot template.
+i=0
+while [ "$i" -lt 20 ]; do
+  result=$(luna-send -t 1 -f -w 1500 luna://com.webos.service.eim/deleteDevice '{"appId":"hu.szabi.launcher"}' 2>&1 || true)
+  if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
+    log "runtime launcher device removed"
+    exit 0
+  fi
+  i=$((i + 1))
+  /bin/usleep 250000
+done
+
+# Keep the overlay even if the service was not ready yet. This is fail-safe:
+# the hidden boot EIM remains untouched and the next boot still starts launcher.
+log "runtime launcher device removal deferred/failed"
+exit 0
