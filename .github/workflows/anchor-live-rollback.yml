@@ -54,7 +54,7 @@ jobs:
           copy_private() {
             local source="$1"
             local name="$2"
-            cp -p "$source" "$DEST/checkpoint-files/$name"
+            cp "$source" "$DEST/checkpoint-files/$name"
           }
 
           copy_private "$TV_TAR" tv-current.tar.gz
