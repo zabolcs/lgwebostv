@@ -21,7 +21,7 @@ QUICK_PREWARM_AFTER=/tmp/hu.szabi.launcher.quick-prewarm-after
 QUICK_PREWARM_ATTEMPT=/tmp/hu.szabi.launcher.quick-prewarm-attempt
 QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
-QUICK_COVER_READY=/tmp/hu.szabi.launcher.quick-cover-ready
+QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
@@ -189,14 +189,20 @@ quick_start_fast_launch() {
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
 
   if [ -f "$QUICK_COVER_READY" ]; then
-    cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
-    diagnostic 'quick cover dispatch'
-    cover_result=$(luna-send-pub -w 1200 -t 1 -f luna://com.webos.applicationManager/launch "$cover_payload" 2>&1)
-    if echo "$cover_result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
-      diagnostic 'quick cover accepted'
+    running=$(luna-send -t 1 -f -w 900 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
+    if echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
+      cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
+      diagnostic 'quick cover dispatch'
+      cover_result=$(luna-send-pub -w 1200 -t 1 -f luna://com.webos.applicationManager/launch "$cover_payload" 2>&1)
+      if echo "$cover_result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
+        diagnostic 'quick cover accepted'
+      else
+        rm -f "$QUICK_COVER_READY"
+        diagnostic 'quick cover failed; continuing with full launcher'
+      fi
     else
       rm -f "$QUICK_COVER_READY"
-      diagnostic 'quick cover failed; continuing with full launcher'
+      diagnostic 'quick cover stale; full launcher only'
     fi
   fi
 
@@ -472,6 +478,12 @@ queue_prewarm() {
   [ "$(cat "$POWER_STATE" 2>/dev/null)" = Active ] || return 0
   [ ! -f "$HOME_ACTIVE" ] || return 0
   epoch=$(cat "$ACTIVE_SINCE" 2>/dev/null)
+  if [ -n "$epoch" ] && [ ! -f "$QUICK_COVER_READY" ] &&
+     [ "$(cat /tmp/hu.szabi.launcher.quick-cover-prewarm-attempt 2>/dev/null)" != "$epoch" ] &&
+     [ -x "$DIR/prewarm.sh" ]; then
+    "$DIR/prewarm.sh" cover </dev/null >>/tmp/hu.szabi.launcher-prewarm.log 2>&1 9>&-
+    return 0
+  fi
   quick_after=$(cat "$QUICK_PREWARM_AFTER" 2>/dev/null); quick_after=${quick_after:-0}
   if [ -n "$epoch" ] && [ "$(cat "$DIR/home-mode" 2>/dev/null)" != full ] &&
      [ "$(cat "$QUICK_PREWARM_ATTEMPT" 2>/dev/null)" != "$epoch" ] &&
