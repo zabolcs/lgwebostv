@@ -1,0 +1,33 @@
+name: Production EIM overlay Quick Start test
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/eim-overlay-quickstart-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate Quick Start test
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/eim-overlay-quickstart-test.sh
+
+      - name: Run Quick Start verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/eim-overlay-quickstart-test.sh
