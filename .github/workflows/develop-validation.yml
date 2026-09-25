@@ -1,0 +1,96 @@
+name: Develop validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, master]
+
+permissions:
+  contents: read
+
+jobs:
+  offline-validation:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          node --version
+
+      - name: Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q apps common gateway remote-control scripts tests tools
+
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find apps common remote-control tests tools -type f -name '*.js' -print0)
+
+      - name: Node regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/url-core.test.js
+          node tests/lifecycle-contract.test.js
+          node tests/launcher-cache.test.js
+          node tests/launcher-display-preferences.test.js
+          node tests/launcher-focus.test.js
+          node tests/launcher-home-lifecycle.test.js
+          node tests/launcher-input-lifecycle.test.js
+          node tests/launcher-popup-lifecycle.test.js
+          node tests/launcher-popup-park-race.test.js
+          node tests/launcher-quick-core.test.js
+          node tests/launcher-settings-navigation.test.js
+          node apps/camera-viewer/tests/camera-viewer.test.js
+          node apps/camera-viewer/tests/webos-player.test.js
+          node apps/media-overlay/tests/media-overlay.test.js
+
+      - name: Python regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 gateway/go2rtc-tv-player/test_server.py
+          python3 tests/test_launcher_packaging.py
+          python3 tests/test_home_shell.py
+          python3 remote-control/tests/test_server.py
+          python3 remote-control/tests/test_launcher_early.py
+          python3 remote-control/tests/test_lg_ssap.py
+          python3 remote-control/tests/test_ssap_pairing.py
+          python3 remote-control/tests/test_broker_supervisor.py
+          python3 remote-control/tests/test_broker_switch.py
+
+      - name: Deterministic build gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build
+          python3 scripts/build-all.py | tee /tmp/lgtv-build-1.txt
+          sha256sum build/*.ipk | sort > /tmp/lgtv-ipk-1.sha256
+
+          rm -rf build
+          python3 scripts/build-all.py | tee /tmp/lgtv-build-2.txt
+          sha256sum build/*.ipk | sort > /tmp/lgtv-ipk-2.sha256
+
+          diff -u /tmp/lgtv-ipk-1.sha256 /tmp/lgtv-ipk-2.sha256
+
+          {
+            echo '## Deterministic IPK hashes'
+            echo
+            echo '\`\`\`text'
+            cat /tmp/lgtv-ipk-2.sha256
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"
