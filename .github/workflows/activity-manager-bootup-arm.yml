@@ -41,7 +41,7 @@ jobs:
 
           "${SSH[@]}" 'command -v luna-send >/dev/null'
           echo TV_SSH=PASS
-          POWER=$("${SSH[@]}" "luna-send -n 1 -f -w 3000 'luna://com.webos.service.tvpower/power/getPowerState' '{}'" || true)
+          POWER=$("${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.webos.service.tvpower/power/getPowerState' '{}'" || true)
           echo "POWER_RAW=$POWER"
           echo "$POWER" | grep -q '"state":"Active"'
 
@@ -57,24 +57,24 @@ jobs:
           echo PROBE_INSTALL=PASS
 
           # First call activates the dynamic service on this firmware.
-          STATUS=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
+          STATUS=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
           if ! echo "$STATUS" | grep -q '"returnValue":true'; then
             "${SSH[@]}" "/usr/bin/run-js-service -n '/media/developer/apps/usr/palm/services/$SERVICE_ID' >/tmp/startupprobe-activate.log 2>&1 &" || true
             sleep 2
-            STATUS=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
+            STATUS=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
           fi
           echo "STATUS_BEFORE=$STATUS"
           echo "$STATUS" | grep -q '"returnValue":true'
           echo SERVICE_STATUS=PASS
 
-          ARM=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://$SERVICE_ID/armBootup' '{\"manager\":\"palm\"}'" || true)
+          ARM=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$SERVICE_ID/armBootup' '{\"manager\":\"palm\"}'" || true)
           echo "ARM_BOOTUP=$ARM"
           echo "$ARM" | grep -q '"returnValue":true'
           ACTIVITY_ID=$(printf '%s' "$ARM" | sed -n 's/.*"activityId":\([0-9][0-9]*\).*/\1/p' | head -1)
           test -n "$ACTIVITY_ID"
           echo "BOOTUP_ACTIVITY_ID=$ACTIVITY_ID"
 
-          INFO=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$ACTIVITY_ID}'" || true)
+          INFO=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$ACTIVITY_ID}'" || true)
           echo "BOOTUP_ACTIVITY_DETAILS=$INFO"
           echo "$INFO" | grep -q '"returnValue":true'
           echo "$INFO" | grep -q '"bootup"'
