@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# read-only retry: discover retained overlay instanceId before any renderer reset
+# read-only retry: discover retained overlay instanceId from lifecycle events
 
 jobs:
   probe:
