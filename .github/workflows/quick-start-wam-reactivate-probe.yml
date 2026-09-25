@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: read retained instance from PalmSystem launchParams
+# retry: inspect SAM running for retained instance
 
 jobs:
   probe:
