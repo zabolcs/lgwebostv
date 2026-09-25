@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# trigger: failsafe cold verification
+
 jobs:
   test:
     runs-on: [self-hosted, Linux, X64]
