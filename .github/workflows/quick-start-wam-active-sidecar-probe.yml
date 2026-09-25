@@ -1,0 +1,33 @@
+name: Quick Start direct WAM Active sidecar probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/quick-start-wam-active-sidecar-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/quick-start-wam-active-sidecar-probe.sh
+
+      - name: Measure direct WAM Active sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/quick-start-wam-active-sidecar-probe.sh
