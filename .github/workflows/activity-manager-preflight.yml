@@ -53,15 +53,17 @@ jobs:
           echo "TV_SSH=PASS"
 
           run_luna() {
-            local uri="$1"
-            local payload="$2"
-            "${SSH[@]}" "luna-send -t 1 -f -w 2000 'luna://$uri' '$payload'"
+            local label="$1"
+            local uri="$2"
+            local payload="$3"
+            "${SSH[@]}" "luna-send -t 1 -f -w 2000 'luna://$uri' '$payload' 2>/dev/null" \
+              > "$TMP/$label.json"
           }
 
-          run_luna com.webos.service.activitymanager/getManagerInfo '{}' > "$TMP/activity.json"
-          run_luna com.webos.bootManager/getBootStatus '{}' > "$TMP/boot.json"
-          run_luna com.webos.service.tvpower/power/getPowerState '{}' > "$TMP/power.json"
-          run_luna com.webos.service.applicationmanager/getForegroundAppInfo '{}' > "$TMP/foreground.json"
+          run_luna activity com.webos.service.activitymanager/getManagerInfo '{}'
+          run_luna boot com.webos.bootManager/getBootStatus '{}'
+          run_luna power com.webos.service.tvpower/power/getPowerState '{}'
+          run_luna foreground com.webos.service.applicationmanager/getForegroundAppInfo '{}'
           "${SSH[@]}" 'cat /proc/uptime' > "$TMP/uptime.txt"
 
           python3 - "$TMP" <<'PY'
@@ -75,7 +77,20 @@ jobs:
               text = (root / name).read_text(encoding="utf-8", errors="replace").strip()
               if not text:
                   raise SystemExit(f"{name}: empty response")
-              data = json.loads(text.splitlines()[-1])
+              data = None
+              for line in reversed(text.splitlines()):
+                  line = line.strip()
+                  if not line:
+                      continue
+                  try:
+                      candidate = json.loads(line)
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict):
+                      data = candidate
+                      break
+              if data is None:
+                  raise SystemExit(f"{name}: no JSON object in response")
               if data.get("returnValue") is False:
                   raise SystemExit(f"{name}: Luna call failed")
               return data
