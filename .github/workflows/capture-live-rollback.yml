@@ -1,0 +1,233 @@
+name: Capture pre-Activity-Manager rollback
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/capture-live-rollback.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Capture private live rollback snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import shlex
+          import sys
+          import time
+
+          PRIVATE = Path("/media/lgtv/checkpoint-20260925-20260925-092443")
+          DEST = Path("/media/lgtv/rollback-20260925-pre-activity-manager")
+          COMPLETE = DEST / "COMPLETE"
+
+          if COMPLETE.exists():
+              print(f"rollback snapshot already complete: {DEST}")
+              raise SystemExit(0)
+          if DEST.exists():
+              raise SystemExit(f"incomplete rollback directory already exists: {DEST}")
+          DEST.mkdir(parents=True, exist_ok=False)
+
+          candidates = [
+              p for p in PRIVATE.rglob("remote.py")
+              if p.name == "remote.py" and p.parent.name == "tools"
+          ]
+          if not candidates:
+              raise SystemExit("private remote helper not found")
+          helper = sorted(candidates, key=lambda p: (len(p.parts), str(p)))[0]
+
+          spec = importlib.util.spec_from_file_location("private_remote", helper)
+          if spec is None or spec.loader is None:
+              raise SystemExit("private remote helper cannot be loaded")
+          remote = importlib.util.module_from_spec(spec)
+          sys.path.insert(0, str(helper.parent))
+          spec.loader.exec_module(remote)
+
+          def write_bytes(name: str, payload: bytes) -> None:
+              path = DEST / name
+              path.write_bytes(payload)
+              try:
+                  path.chmod(0o600)
+              except OSError:
+                  pass
+
+          def direct(client, command: str, timeout: int = 45) -> tuple[int, bytes, bytes]:
+              stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+              try:
+                  stdin.channel.shutdown_write()
+              except Exception:
+                  pass
+              out = stdout.read()
+              err = stderr.read()
+              code = stdout.channel.recv_exit_status()
+              return code, out, err
+
+          def require_stream(client, command: str, output_name: str, timeout: int = 120) -> None:
+              code, out, err = direct(client, command, timeout)
+              if code != 0:
+                  raise RuntimeError(f"{output_name} capture failed with exit code {code}")
+              if not out:
+                  raise RuntimeError(f"{output_name} capture produced no data")
+              write_bytes(output_name, out)
+
+          def ct_command(command: str) -> str:
+              return remote.command("ct", command)
+
+          tv_paths = [
+              "/var/lib/webosbrew/launcher-home",
+              "/var/lib/webosbrew/remote-broker",
+              "/var/lib/webosbrew/init.d/launcher-home",
+              "/var/lib/webosbrew/init.d/remote-broker",
+          ]
+          app_ids = [
+              "hu.szabi.launcher",
+              "hu.szabi.launcher.quick",
+              "hu.szabi.launcher.overlay",
+              "hu.szabi.cameraviewer",
+              "hu.szabi.mediaoverlay",
+              "hu.szabi.remotemapper",
+          ]
+          for app_id in app_ids:
+              tv_paths.append(f"/media/developer/apps/usr/palm/applications/{app_id}")
+              tv_paths.append(f"/media/developer/apps/usr/palm/packages/{app_id}")
+
+          ct_paths = [
+              "/opt/lgtv-control",
+              "/etc/lgtv-control",
+              "/var/lib/lgtv-control",
+              "/etc/systemd/system/lgtv-control.service",
+              "/etc/systemd/system/lgtv-launcher-early.service",
+          ]
+
+          def tar_command(paths: list[str]) -> str:
+              quoted = " ".join(shlex.quote(p) for p in paths)
+              return (
+                  "set -eu; paths=''; "
+                  f"for p in {quoted}; do "
+                  "  if [ -e \"$p\" ] || [ -L \"$p\" ]; then paths=\"$paths $p\"; fi; "
+                  "done; "
+                  "test -n \"$paths\"; "
+                  "tar -czf - $paths"
+              )
+
+          pve = remote.connect()
+          tv = None
+          try:
+              tv = remote.connect_tv(pve)
+
+              require_stream(tv, tar_command(tv_paths), "tv-current.tar.gz", 120)
+              require_stream(pve, ct_command(tar_command(ct_paths)), "ct125-current.tar.gz", 120)
+
+              tv_meta = r"""set -u
+          echo "captured_epoch=$(date +%s)"
+          echo "uptime=$(cat /proc/uptime 2>/dev/null || true)"
+          echo "uname=$(uname -a 2>/dev/null || true)"
+          echo "remote_broker_pid=$(pidof remote-broker 2>/dev/null || true)"
+          for p in /var/lib/webosbrew/launcher-home /var/lib/webosbrew/remote-broker /var/lib/webosbrew/init.d/launcher-home /var/lib/webosbrew/init.d/remote-broker; do
+            if [ -e "$p" ] || [ -L "$p" ]; then
+              echo "PATH $p"
+              find "$p" -type f -exec sha256sum {} \; 2>/dev/null | sort || true
+            fi
+          done
+          luna-send -t 1 -f -w 1500 luna://com.webos.service.tvpower/power/getPowerState '{}' 2>/dev/null || true
+          luna-send -t 1 -f -w 1500 luna://com.webos.surfacemanager/getForegroundWindowInfo '{}' 2>/dev/null || true
+          luna-send -t 1 -f -w 1500 luna://com.webos.service.activitymanager/getManagerInfo '{}' 2>/dev/null || true
+          luna-send -t 1 -f -w 1500 luna://com.webos.service.activitymanager/getDetails '{"activityName":"hu.szabi.launcher.startupprobe.service.immediate","current":true,"internal":true}' 2>/dev/null || true
+          """
+              code, out, err = direct(tv, tv_meta, 45)
+              if code != 0:
+                  raise RuntimeError(f"TV metadata capture failed with exit code {code}")
+              write_bytes("tv-state.txt", out)
+
+              ct_meta = r"""set -u
+          echo "captured_epoch=$(date +%s)"
+          echo "uname=$(uname -a 2>/dev/null || true)"
+          for unit in lgtv-control.service lgtv-launcher-early.service; do
+            echo "$unit active=$(systemctl is-active "$unit" 2>/dev/null || true) enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)"
+          done
+          for p in /opt/lgtv-control /etc/systemd/system/lgtv-control.service /etc/systemd/system/lgtv-launcher-early.service; do
+            if [ -e "$p" ] || [ -L "$p" ]; then
+              echo "PATH $p"
+              find "$p" -type f -exec sha256sum {} \; 2>/dev/null | sort || true
+            fi
+          done
+          """
+              code, out, err = direct(pve, ct_command(ct_meta), 45)
+              if code != 0:
+                  raise RuntimeError(f"CT125 metadata capture failed with exit code {code}")
+              write_bytes("ct125-state.txt", out)
+
+              code, out, err = direct(pve, "cat /etc/pve/lxc/125.conf 2>/dev/null || true", 15)
+              if code == 0 and out:
+                  write_bytes("ct125-lxc.conf", out)
+
+          finally:
+              if tv is not None:
+                  tv.close()
+              pve.close()
+
+          hashes = []
+          for path in sorted(DEST.iterdir()):
+              if not path.is_file() or path.name in {"SHA256SUMS.txt", "COMPLETE"}:
+                  continue
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              hashes.append(f"{digest}  {path.name}")
+          (DEST / "SHA256SUMS.txt").write_text("\n".join(hashes) + "\n", encoding="utf-8")
+
+          restore = """LGTV pre-Activity-Manager rollback checkpoint
+
+          Scope:
+          - TV launcher-home guard state
+          - TV remote-broker state
+          - current custom webOS application/package trees
+          - CT125 /opt/lgtv-control
+          - CT125 /etc/lgtv-control and /var/lib/lgtv-control
+          - lgtv-control.service and lgtv-launcher-early.service
+          - captured service/hash/activity-manager metadata
+
+          Restore policy:
+          - Do not restore automatically.
+          - Restore only on explicit operator request.
+          - Verify SHA256SUMS.txt first.
+          - Stop affected services before replacing CT125 files.
+          - Remove/cancel the experimental Activity Manager probe before restoring TV guard state.
+          - Restore tar members relative to / as root, preserve ownership/modes, then daemon-reload and restore the captured enabled/active service state.
+          - No TV reboot is required merely to restore these files unless a later experiment specifically proves otherwise.
+          """
+          (DEST / "RESTORE.txt").write_text(restore, encoding="utf-8")
+          COMPLETE.write_text(
+              json.dumps({
+                  "createdEpoch": int(time.time()),
+                  "purpose": "pre-Activity-Manager launcher latency experiment",
+                  "sourceGitSha": os.environ.get("GITHUB_SHA", ""),
+                  "tvArchive": "tv-current.tar.gz",
+                  "ct125Archive": "ct125-current.tar.gz",
+              }, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          print(f"ROLLBACK_SNAPSHOT={DEST}")
+          print(f"TV_ARCHIVE_BYTES={(DEST / 'tv-current.tar.gz').stat().st_size}")
+          print(f"CT125_ARCHIVE_BYTES={(DEST / 'ct125-current.tar.gz').stat().st_size}")
+          print("ROLLBACK_CAPTURE=PASS")
+          PY
