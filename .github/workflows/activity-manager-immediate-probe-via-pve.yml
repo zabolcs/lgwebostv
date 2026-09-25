@@ -90,6 +90,12 @@ jobs:
                       except json.JSONDecodeError: pass
               raise RuntimeError('no JSON from '+uri)
 
+          legacy_candidates=list(ROOT.rglob('CHECKPOINT-LGTV-2026-08-31.md'))
+          if not legacy_candidates:
+              raise SystemExit('legacy connection checkpoint metadata not found')
+          legacy_name=Path(r'C:\\Users\\szszabolcs\\Documents\\Codex\\2026-08-21\\x-system-lgtv-root\\CHECKPOINT-LGTV-2026-08-31.md')
+          legacy_name.write_text(legacy_candidates[0].read_text(encoding='utf-8'),encoding='utf-8')
+
           pve=remote.connect()
           tv=None
           installed=False
