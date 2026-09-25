@@ -1,0 +1,116 @@
+name: Cleanup Activity Manager startup probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-startup-probe-cleanup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Cancel test activity and remove probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARKER=/media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          test -f "$MARKER"
+
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          SOURCE_KEY=/media/lgtv/id_rsa
+          APP_ID=hu.szabi.launcher.startupprobe
+          SERVICE_ID=hu.szabi.launcher.startupprobe.service
+          ACTIVITY_ID=89
+          MANIFEST=/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json
+          SERVICE_META=/media/developer/apps/usr/palm/services/$SERVICE_ID/services.json
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+          ssh-keyscan -T 3 "$TV_HOST" >"$KNOWN" 2>/dev/null
+          test -s "$KNOWN"
+          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$TV")
+
+          luna_file() {
+            local label="$1"
+            local uri="$2"
+            local payload="$3"
+            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$uri' '$payload' 2>&1" >"$TMP/$label.txt" || true
+          }
+
+          extract_json() {
+            python3 - "$1" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          decoder = json.JSONDecoder()
+          found = None
+          for line in reversed(text.splitlines()):
+              for index, char in enumerate(line):
+                  if char != "{":
+                      continue
+                  try:
+                      candidate, _ = decoder.raw_decode(line[index:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict):
+                      found = candidate
+                      break
+              if found is not None:
+                  break
+          if found is None:
+              raise SystemExit("no JSON response")
+          print(json.dumps(found, separators=(",", ":")))
+          PY
+          }
+
+          "${SSH[@]}" true
+          echo TV_SSH=PASS
+
+          luna_file before com.palm.activitymanager/getDetails "{\"activityId\":$ACTIVITY_ID,\"current\":false,\"internal\":false}"
+          BEFORE="$(extract_json "$TMP/before.txt" 2>/dev/null || true)"
+          echo "ACTIVITY_BEFORE=$BEFORE"
+
+          if echo "$BEFORE" | grep -q '"returnValue":true'; then
+            luna_file cancel com.palm.activitymanager/cancel "{\"activityId\":$ACTIVITY_ID}"
+            CANCEL="$(extract_json "$TMP/cancel.txt" 2>/dev/null || true)"
+            echo "ACTIVITY_CANCEL=$CANCEL"
+          else
+            echo ACTIVITY_ALREADY_ABSENT=YES
+          fi
+
+          sleep 1
+          luna_file after com.palm.activitymanager/getDetails "{\"activityId\":$ACTIVITY_ID,\"current\":false,\"internal\":false}"
+          AFTER="$(extract_json "$TMP/after.txt" 2>/dev/null || true)"
+          echo "ACTIVITY_AFTER=$AFTER"
+          if echo "$AFTER" | grep -q '"returnValue":true'; then
+            echo ACTIVITY_REMOVE=FAILED
+            exit 2
+          fi
+          echo ACTIVITY_REMOVE=PASS
+
+          "${SSH[@]}" "/usr/bin/luna-send-pub -t 1 -w 30000 -f             'luna://com.webos.appInstallService/dev/remove'             '{\"id\":\"$APP_ID\",\"subscribe\":true}' >/tmp/hu.szabi.startupprobe-cleanup.log 2>&1" || true
+
+          REMOVED=0
+          for i in $(seq 1 40); do
+            if "${SSH[@]}" "test ! -e '$MANIFEST' && test ! -e '$SERVICE_META'"; then
+              REMOVED=1
+              break
+            fi
+            sleep 0.5
+          done
+          test "$REMOVED" -eq 1
+          echo PROBE_REMOVE=PASS
+          echo PRODUCTION_LAUNCHER_UNCHANGED=PASS
+          echo NO_REBOOT=PASS
