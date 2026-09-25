@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.4.0 guard: prewarmed Quick Start cover plus direct full-launch fallback.
+# v0.4.3 guard: Prepare Resume cover plus unchanged v0.4.0 full-launch fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -23,6 +23,8 @@ QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
 QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
 QUICK_COVER_QUEUE=/tmp/hu.szabi.launcher.quick-cover-prewarm-queued
+QUICK_RESUME_ATTEMPT=/tmp/hu.szabi.launcher.quick-resume-attempt
+QUICK_RESUME_ACCEPTED=/tmp/hu.szabi.launcher.quick-resume-accepted
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
@@ -123,7 +125,7 @@ arm_power_startup() {
 
 settle_wake() {
   diagnostic "wake $1 foreground=$current"
-  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
+  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_RESUME_ATTEMPT" "$QUICK_RESUME_ACCEPTED"
 }
 
 wake_window_open() {
@@ -165,6 +167,30 @@ quick_fast_lane_safe() {
   return 0
 }
 
+prepare_resume_cover_worker() {
+  [ -f "$QUICK_WAKE_ARMED" ] || { rm -f "$QUICK_RESUME_ATTEMPT"; return 1; }
+  [ -f "$QUICK_COVER_READY" ] || { rm -f "$QUICK_RESUME_ATTEMPT"; return 1; }
+  [ ! -f "$HOME_ACTIVE" ] || { rm -f "$QUICK_RESUME_ATTEMPT"; return 1; }
+  if ! quick_fast_lane_safe; then
+    rm -f "$QUICK_RESUME_ATTEMPT"
+    diagnostic 'prepare resume cover blocked: EIM overlay not healthy'
+    return 1
+  fi
+  origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
+  display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
+  payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-prepare-resume","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
+  diagnostic 'prepare resume cover dispatch'
+  result=$(luna-send-pub -w 350 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
+  if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
+    touch "$QUICK_RESUME_ACCEPTED"
+    diagnostic 'prepare resume cover accepted'
+    return 0
+  fi
+  rm -f "$QUICK_RESUME_ATTEMPT"
+  diagnostic 'prepare resume cover failed; v0.4.0 fallback remains armed'
+  return 1
+}
+
 quick_start_fast_launch() {
   [ -f "$QUICK_WAKE_ARMED" ] || return 1
   [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
@@ -189,7 +215,7 @@ quick_start_fast_launch() {
   origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
 
-  if [ -f "$QUICK_COVER_READY" ]; then
+  if [ -f "$QUICK_COVER_READY" ] && [ ! -f "$QUICK_RESUME_ACCEPTED" ]; then
     running=$(luna-send -t 1 -f -w 900 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
     if echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
       cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
@@ -237,12 +263,12 @@ handle_power_state() {
       fi
       ;;
     'Screen Saver')
-      rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
+      rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_RESUME_ATTEMPT" "$QUICK_RESUME_ACCEPTED"
       ;;
     'Active Standby'|Suspend|'Screen Off')
       [ "$previous" = Active ] && snapshot_power_off_app
       touch "$QUICK_WAKE_ARMED"
-      rm -f "$QUICK_FAST_ATTEMPT" "$BOOT_READY" "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
+      rm -f "$QUICK_FAST_ATTEMPT" "$QUICK_RESUME_ATTEMPT" "$QUICK_RESUME_ACCEPTED" "$BOOT_READY" "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
       ;;
     *)
       [ "$previous" = Active ] && snapshot_power_off_app
@@ -526,6 +552,17 @@ power_loop() {
   while [ -f "$ENABLED" ]; do
     luna-send -i luna://com.webos.service.tvpower/power/getPowerState '{"subscribe":true}' 2>/dev/null |
     while IFS= read -r line; do
+      processing=$(json_value "$line" processing)
+      if [ "$processing" = 'Prepare Resume' ]; then
+        # This is emitted about half a second before Active on this TV. Only
+        # activate the cover that was already prewarmed during the previous
+        # active session; the normal v0.4.0 Active path remains the fallback.
+        if [ -f "$QUICK_WAKE_ARMED" ] && [ -f "$QUICK_COVER_READY" ] &&
+           [ ! -f "$QUICK_RESUME_ATTEMPT" ] && [ ! -f "$QUICK_RESUME_ACCEPTED" ]; then
+          touch "$QUICK_RESUME_ATTEMPT"
+          prepare_resume_cover_worker 9>&- &
+        fi
+      fi
       state=$(json_value "$line" state)
       [ -n "$state" ] || continue
       # Never wait on another Luna call here: Suspend must invalidate a launch
@@ -602,11 +639,11 @@ run_pending_tick() {
 }
 
 # START WORKER (test fixtures source only the functions above).
-rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
+rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_RESUME_ATTEMPT" "$QUICK_RESUME_ACCEPTED"
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.4.0 started'
+diagnostic 'guard v0.4.3 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
