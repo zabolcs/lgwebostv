@@ -49,4 +49,9 @@ jobs:
           echo '=== SMARTDEMOKIT APPINFO/SERVICE REFERENCES ==='
           "${SSH[@]}" "grep -R -n -E 'smartdemokit|demo\.smartdemokit' /usr/palm /media/cryptofs/apps /media/developer/apps 2>/dev/null | head -160 || true"
 
+          echo '=== DIRECT REBOOT POSTMORTEM ==='
+          "${SSH[@]}" "date +%s; cat /proc/uptime"
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
+          "${SSH[@]}" "if test -e /media/developer/apps/usr/palm/applications/hu.szabi.launcher.startupprobe/appinfo.json || test -e /media/developer/apps/usr/palm/services/hu.szabi.launcher.startupprobe.service/services.json; then echo PROBE_PRESENT=yes; else echo PROBE_PRESENT=no; fi"
+
           echo FACTORY_INSPECTION_COMPLETE=PASS
