@@ -2,10 +2,6 @@ name: First-app-launched Activity Manager reboot test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/activity-manager-firstapp-reboot-test.yml'
 
 permissions:
   contents: read
@@ -128,7 +124,7 @@ jobs:
           fi
           echo OLD_BOOTUP_ACTIVITY_REMOVED=PASS
 
-          CREATE_PAYLOAD='{"activity":{"name":"hu.szabi.launcher.startupprobe.service.firstAppLaunched.root","description":"Persistent first-app-launched callback timing probe","type":{"foreground":true,"persist":true,"continuous":true},"trigger":{"method":"luna://com.webos.bootManager/getBootStatus","params":{"subscribe":true},"where":{"prop":"firstAppLaunched","op":"=","val":true}},"callback":{"method":"luna://hu.szabi.launcher.startupprobe.service/probe","params":{"kind":"firstAppLaunched"}}},"replace":true,"start":true,"subscribe":false}'
+          CREATE_PAYLOAD='{"activity":{"name":"hu.szabi.launcher.startupprobe.service.firstAppLaunched.root","description":"Persistent first-app-launched callback timing probe","type":{"foreground":true,"persist":true},"trigger":{"method":"luna://com.webos.bootManager/getBootStatus","params":{"subscribe":true},"where":{"prop":"firstAppLaunched","op":"=","val":true}},"callback":{"method":"luna://hu.szabi.launcher.startupprobe.service/probe","params":{"kind":"firstAppLaunched"}}},"replace":true,"start":true,"subscribe":false}'
           luna_file arm_firstapp com.palm.activitymanager/create "$CREATE_PAYLOAD"
           ARM="$(extract_json "$TMP/arm_firstapp.txt")"
           echo "FIRSTAPP_ARM=$ARM"
