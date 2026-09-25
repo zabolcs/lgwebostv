@@ -1,0 +1,52 @@
+name: Rollback access preflight
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/rollback-access-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  access:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test read-only SSH access paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_KEY=/media/lgtv/id_rsa
+          test -f "$SOURCE_KEY"
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+
+          test_host() {
+            local label="$1"
+            local host="$2"
+            local known="$TMP/known-$label"
+            ssh-keyscan -T 3 "$host" > "$known" 2>/dev/null || true
+            if [ ! -s "$known" ]; then
+              echo "$label=NO_HOST_KEY"
+              return 0
+            fi
+            if ssh -T -i "$KEY"               -o BatchMode=yes               -o ConnectTimeout=5               -o StrictHostKeyChecking=yes               -o UserKnownHostsFile="$known"               root@"$host" 'true' </dev/null >/dev/null 2>&1; then
+              echo "$label=PASS"
+            else
+              echo "$label=NO_KEY_ACCESS"
+            fi
+          }
+
+          test_host TV 192.168.0.240
+          test_host CT125 192.168.0.223
+          test_host PVE 192.168.0.120
