@@ -105,7 +105,7 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.3.8" tools/generated-tv-scripts/guard.sh
+grep -q "guard v0.3.9" tools/generated-tv-scripts/guard.sh
 echo BACKUP=PASS
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
@@ -118,7 +118,7 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -40 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.3.8 started'"
+"${SSH[@]}" "tail -40 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.3.9 started'"
 echo FAST_GUARD_DEPLOY=PASS
 
 # Worst-case user state: HDMI2 is foreground before Quick Start standby.
