@@ -1,0 +1,109 @@
+name: Startup probe service diagnostics
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/startup-probe-service-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check --quiet 'paramiko==3.5.1'
+      - name: Install, inspect service, and remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          python tools/lab/build-launcher-startup-probe.py >/tmp/lgtv-startup-probe-build.txt
+          python - <<'PY'
+          from __future__ import annotations
+          import hashlib, json, os, shlex, types
+          from pathlib import Path
+
+          ROOT=Path('/media/lgtv/checkpoint-20260925-20260925-092443')
+          APP='hu.szabi.launcher.startupprobe'
+          SERVICE='hu.szabi.launcher.startupprobe.service'
+          IPK=Path(os.environ['GITHUB_WORKSPACE'])/'build'/f'{APP}_0.0.2_all.ipk'
+          INSTALL=Path(os.environ['GITHUB_WORKSPACE'])/'scripts'/'install-local-on-tv.sh'
+          MANIFEST=f'/media/developer/apps/usr/palm/applications/{APP}/appinfo.json'
+          SERVICE_DIR=f'/media/developer/apps/usr/palm/services/{SERVICE}'
+          SERVICE_META=SERVICE_DIR+'/services.json'
+
+          helpers=sorted(ROOT.rglob('remote.py'),key=lambda p:(len(p.parts),str(p)))
+          preferred=[p for p in helpers if 'source/history/checkpoint-original/LGTV-checkpoint-2026-09-19/tools/remote.py' in str(p)]
+          helper=preferred[0] if preferred else helpers[0]
+          remote=types.ModuleType('private_remote'); remote.__file__=str(helper)
+          source='\n'.join(line for line in helper.read_text(encoding='utf-8').splitlines()
+                           if not ('sys.path.' in line and ('insert(' in line or 'append(' in line)))
+          exec(compile(source,str(helper),'exec'),remote.__dict__)
+
+          legacy=list(ROOT.rglob('CHECKPOINT-LGTV-2026-08-31.md'))
+          if not legacy: raise SystemExit('legacy connection checkpoint metadata not found')
+          Path(r'C:\\Users\\szszabolcs\\Documents\\Codex\\2026-08-21\\x-system-lgtv-root\\CHECKPOINT-LGTV-2026-08-31.md').write_text(
+              legacy[0].read_text(encoding='utf-8'),encoding='utf-8')
+
+          def run(c,cmd,timeout=45,check=True):
+              stdin,stdout,stderr=c.exec_command(cmd,timeout=timeout)
+              try: stdin.channel.shutdown_write()
+              except Exception: pass
+              out=stdout.read().decode(errors='replace'); err=stderr.read().decode(errors='replace')
+              rc=stdout.channel.recv_exit_status()
+              if check and rc: raise RuntimeError(f'rc={rc}: {err[-500:]}')
+              return rc,out,err
+
+          pve=remote.connect(); tv=None; installed=False
+          remote_dir=f'/tmp/hu.szabi.activity-diag.{os.getpid()}'
+          try:
+              tv=remote.connect_tv(pve)
+              _,power,_=run(tv,"luna-send -t 1 -f -w 2000 'luna://com.webos.service.tvpower/power/getPowerState' '{}'")
+              print('POWER_RAW='+power.strip()[-500:])
+              if '"state":"Active"' not in power.replace(' ',''):
+                  print('LIVE_CHANGES=NONE'); raise SystemExit(0)
+              _,exists,_=run(tv,f"if [ -e {shlex.quote(MANIFEST)} ] || [ -e {shlex.quote(SERVICE_META)} ]; then echo yes; else echo no; fi")
+              if exists.strip()=='yes':
+                  print('PROBE_ALREADY_INSTALLED=yes'); print('LIVE_CHANGES=NONE'); raise SystemExit(0)
+              run(tv,'mkdir -p '+shlex.quote(remote_dir))
+              with tv.open_sftp() as sftp:
+                  sftp.put(str(IPK),remote_dir+'/probe.ipk'); sftp.put(str(INSTALL),remote_dir+'/install.sh')
+              digest=hashlib.sha256(IPK.read_bytes()).hexdigest()
+              run(tv,'chmod 700 '+shlex.quote(remote_dir+'/install.sh')+' && sh '+shlex.quote(remote_dir+'/install.sh')+' '+shlex.quote(remote_dir+'/probe.ipk')+' '+digest,90)
+              installed=True; print('PROBE_INSTALL=PASS')
+              for label,cmd in [
+                ('APPINFO',f'cat {shlex.quote(MANIFEST)}'),
+                ('SERVICE_FILES',f'find {shlex.quote(SERVICE_DIR)} -maxdepth 2 -type f -print -exec sh -c \'echo --- "$1"; sed -n "1,160p" "$1" 2>/dev/null || true\' sh {{}} \\;'),
+                ('SERVICE_PROCESSES',"ps w | grep -E '[n]ode|[w]ebos-service|startupprobe' || true"),
+                ('LS2_SERVICE',"ls-control -l 2>&1 | grep -F "+shlex.quote(SERVICE)+" || true"),
+                ('LUNA_STATUS',"luna-send -t 3 -f -w 5000 "+shlex.quote('luna://'+SERVICE+'/status')+" '{}' 2>&1 || true"),
+                ('TMP_STATE',"cat /tmp/hu.szabi.launcher.startupprobe.activity.json 2>&1 || true"),
+              ]:
+                  rc,out,err=run(tv,cmd,15,False)
+                  print(f'---{label} rc={rc}---'); print((out+err)[-8000:])
+          finally:
+              if tv is not None:
+                  if installed:
+                      payload=json.dumps({'id':APP,'subscribe':True},separators=(',',':'))
+                      run(tv,"/usr/bin/luna-send-pub -t 1 -w 30000 -f 'luna://com.webos.appInstallService/dev/remove' "+shlex.quote(payload),45,False)
+                      import time
+                      for _ in range(40):
+                          _,left,_=run(tv,f"if [ -e {shlex.quote(MANIFEST)} ] || [ -e {shlex.quote(SERVICE_META)} ]; then echo yes; else echo no; fi",check=False)
+                          if left.strip()=='no':
+                              installed=False; print('PROBE_REMOVE=PASS'); break
+                          time.sleep(.5)
+                  run(tv,'rm -rf '+shlex.quote(remote_dir),check=False)
+                  tv.close()
+              pve.close()
+              if installed: raise RuntimeError('probe cleanup did not complete')
+          print('PRODUCTION_LAUNCHER_UNCHANGED=PASS')
+          PY
