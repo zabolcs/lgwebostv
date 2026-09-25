@@ -179,6 +179,15 @@ jobs:
           "${SSH[@]}" "echo ---init-hooks---; ls -la /var/lib/webosbrew/init.d 2>/dev/null || true"
           "${SSH[@]}" "echo ---webosbrew-startup---; test -f /tmp/webosbrew_startup && echo startup-done || echo startup-not-done"
 
+          echo '=== EIM OVERLAY CURRENT STATE ==='
+          "${SSH[@]}" "echo ---mounts---; findmnt /var/lib/eim 2>/dev/null || true; findmnt /var/lib/webosbrew/launcher-eim/frozen-view 2>/dev/null || true"
+          "${SSH[@]}" "echo ---base---; ls -la /var/lib/webosbrew/launcher-eim 2>/dev/null || true"
+          "${SSH[@]}" "echo ---hook---; ls -l /var/lib/webosbrew/init.d/launcher-eim-overlay 2>/dev/null || true"
+          "${SSH[@]}" "echo ---markers---; for f in enabled boot-pending last-good disabled-failsafe; do printf '%s=' \"\$f\"; test -e /var/lib/webosbrew/launcher-eim/\"\$f\" && cat /var/lib/webosbrew/launcher-eim/\"\$f\" || echo absent; done"
+          "${SSH[@]}" "echo ---live-lastinput---; cat /var/lib/eim/lastinput 2>/dev/null || true"
+          "${SSH[@]}" "echo ---overlay-log---; tail -80 /tmp/hu.szabi.launcher-eim-overlay.log 2>/dev/null || true"
+          "${SSH[@]}" "echo ---uptime---; cat /proc/uptime"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
