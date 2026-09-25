@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: consume SAM running instance and measure direct WAM
+# retry: inspect developer running API for retained instance
 
 jobs:
   probe:
