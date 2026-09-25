@@ -1,4 +1,4 @@
-# Ígéretes, még ki nem próbált indítás: webOS Activity Manager
+# webOS Activity Manager indítási kísérlet
 
 ## Mi ez
 
@@ -7,11 +7,30 @@ A webOS saját `com.webos.service.activitymanager` szolgáltatása tartós vagy 
 Ez a cél TV-n nem elméleti API:
 
 - `getManagerInfo` szerint a firmware követelményei: `bootup`, `internet`, `wifi`.
-- A gyári 3-as activity neve `demo.smartdemokit.launch`, leírása `Launch smartdemokit app`.
-- Ennek típusa `continuous:true, foreground:true`, és triggerében a `com.webos.bootManager/getBootStatus` válasz `firstAppLaunched:true` feltétele látszik.
+- A gyári `demo.smartdemokit.launch` activity létezik; az activity ID rebootonként változhat, ezért név alapján kell azonosítani.
+- Típusa `continuous:true, foreground:true`, triggerében a bootManager `firstAppLaunched:true` állapota látszik, a `getDetails` szerint viszont `callback:null`, tehát önmagában nem bizonyít közvetlen app-launch callbacket.
 - A gyári Activity Manager role outbound `*`, tehát a manager elvben képes más LS2 callbacket meghívni.
 
 A mai read-only bizonyíték a `private-live/diagnostics/activity-manager.txt` fájlban lesz. A publikus webOS OSE API leírás is támogat callbacket, `persist` típust és `bootup:true` requirementet. A kereskedelmi LG firmware ACG-jogai eltérhetnek, ezért ezt előbb mérő-próbával kell igazolni.
+
+## 2026-09-25 mért eredmények
+
+A teljes kísérletsorozat a cél TV-n lefutott; a production launcher nem módosult, a rollback baseline végig megmaradt.
+
+- Az azonnali Activity Manager -> saját JS service callback működik a `com.palm.activitymanager` aliason.
+- Persistent `requirements: {bootup:true}` service callback: **67.85 s** boot uptime.
+- Persistent bootManager `firstAppLaunched:true` service callback: **66.25 s** boot uptime.
+- Activity Manager -> közvetlen `com.webos.service.applicationmanager/launch` callback reboot nélkül működik.
+- Ugyanez persistent `firstAppLaunched:true` triggerrel reboot után:
+  - renderer navigation: kb. **65.14 s** boot uptime;
+  - app JavaScript start: kb. **65.46 s**;
+  - első paint marker: kb. **65.69 s**.
+  Az utólagos visszaszámítás a TV másodperc-felbontású `date +%s` értéke miatt kb. ±1 s pontosságú.
+- Korábbi production cold-boot mérésben a launcher natív felülete kb. **53.594 s** boot uptime-nál már megjelent.
+
+Következtetés: ezen a firmware-en sem a service callback, sem a JS service-t megkerülő közvetlen Activity Manager app-launch út nem ad korábbi indulási pontot a jelenlegi production megoldásnál. Emiatt az Activity Manager irányt nem kell productionbe integrálni startup-gyorsításként.
+
+A teszt végén a persistent direkt activity már nem található, a `hu.szabi.launcher.startupprobe` app/service nincs telepítve. A production launcher változatlan maradt.
 
 ## Miért lehet gyorsabb
 
