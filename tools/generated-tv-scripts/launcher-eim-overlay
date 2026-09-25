@@ -83,17 +83,25 @@ schedule_confirm() {
     PENDING="$BASE/boot-pending"
     LAST_GOOD="$BASE/last-good"
     FROZEN="$BASE/frozen-view"
-    if [ -f "$ENABLED" ] &&
-       mountpoint -q /var/lib/eim &&
-       mountpoint -q "$FROZEN" &&
-       grep -q "\\"appId\\"[[:space:]]*:[[:space:]]*\\"hu.szabi.launcher\\"" "$FROZEN/lastinput"; then
+    enabled=0
+    live_mount=0
+    frozen_mount=0
+    frozen_launcher=0
+    [ -f "$ENABLED" ] && enabled=1
+    mountpoint -q /var/lib/eim && live_mount=1
+    mountpoint -q "$FROZEN" && frozen_mount=1
+    grep -Fq hu.szabi.launcher "$FROZEN/lastinput" 2>/dev/null && frozen_launcher=1
+    if [ "$enabled" -eq 1 ] &&
+       [ "$live_mount" -eq 1 ] &&
+       [ "$frozen_mount" -eq 1 ] &&
+       [ "$frozen_launcher" -eq 1 ]; then
       date +%s >"$LAST_GOOD.new"
       mv -f "$LAST_GOOD.new" "$LAST_GOOD"
       rm -f "$PENDING"
       sync
-      printf "%s overlay confirmed stable\\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" >>/tmp/hu.szabi.launcher-eim-overlay.log
+      printf "%s overlay confirmed stable enabled=%s live=%s frozen=%s launcher=%s\\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" "$enabled" "$live_mount" "$frozen_mount" "$frozen_launcher" >>/tmp/hu.szabi.launcher-eim-overlay.log
     else
-      printf "%s overlay confirmation failed\\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" >>/tmp/hu.szabi.launcher-eim-overlay.log
+      printf "%s overlay confirmation failed enabled=%s live=%s frozen=%s launcher=%s\\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" "$enabled" "$live_mount" "$frozen_mount" "$frozen_launcher" >>/tmp/hu.szabi.launcher-eim-overlay.log
     fi
   ' </dev/null >"$CONFIRM_LOG" 2>&1 &
 }
