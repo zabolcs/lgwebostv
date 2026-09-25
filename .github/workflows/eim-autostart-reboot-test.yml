@@ -1,0 +1,36 @@
+name: Guarded EIM autostart boot measurement
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/eim-autostart-reboot-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate guarded test
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/eim-autostart-reboot-test.sh
+          python3 tools/lab/build-eim-autostart-probe.py
+          test -f build/hu.szabi.launcher.eimprobe_0.0.1_all.ipk
+          echo GUARDED_TEST_VALIDATION=PASS
+
+      - name: Run one-shot EIM boot measurement
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/eim-autostart-reboot-test.sh
