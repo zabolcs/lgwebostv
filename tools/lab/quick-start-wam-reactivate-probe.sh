@@ -81,11 +81,6 @@ echo "PREWARM_CDP=$CDP"
 test "$READY" -eq 1
 echo PREWARM_READY=PASS
 
-"${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-reactivate-probe\"}}' >/dev/null"
-sleep 1
-stop_guard
-echo GUARD_STOPPED=PASS
-
 APPINFO="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
 RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
 echo "APPINFO_RAW=$APPINFO"
@@ -120,6 +115,11 @@ PY
 )"
 echo "WAM_PAYLOAD_READY=PASS"
 
+
+"${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-reactivate-probe\"}}' >/dev/null"
+sleep 1
+stop_guard
+echo GUARD_STOPPED=PASS
 PRE_LINES="$("${SSH[@]}" "wc -l </var/log/messages 2>/dev/null || echo 0")"
 START_MS="$(date +%s%3N)"
 RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 2500 luna://com.webos.service.webappmanager/launchApp '$PAYLOAD' 2>&1")"
