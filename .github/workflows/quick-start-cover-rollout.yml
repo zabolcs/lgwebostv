@@ -10,9 +10,10 @@ on:
 permissions:
   contents: read
 
+# one-shot: v0.4.8 trusted Active worker
+
 jobs:
   rollout:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     steps:
@@ -21,13 +22,35 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare v0.4.8 one-shot acceptance gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("tools/lab/quick-start-cover-rollout.sh")
+          s=p.read_text()
+          s=s.replace("guard v0.4.0","guard v0.4.8")
+          s=s.replace("if cover > 6.0:","if cover >= 2.10:")
+          s=s.replace(
+              'raise SystemExit(f"cover too slow to hide LG surface: {cover:.3f}s")',
+              'raise SystemExit(f"trusted Active cover did not beat protected 2.368s baseline enough: {cover:.3f}s")'
+          )
+          needle='"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q \'quick cover accepted\'"'
+          proof='"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q \'quick trusted Active event\'"'
+          if needle not in s:
+              raise SystemExit("guard proof insertion point missing")
+          s=s.replace(needle, proof+"\n"+needle, 1)
+          p.write_text(s)
+          PY
+
       - name: Validate rollout
         shell: bash
         run: |
           set -euo pipefail
           bash -n tools/lab/quick-start-cover-rollout.sh
           sh -n tools/generated-tv-scripts/guard.sh
-          grep -q "guard v0.4.0" tools/generated-tv-scripts/guard.sh
+          grep -q "guard v0.4.8" tools/generated-tv-scripts/guard.sh
 
       - name: Deploy and measure prewarmed cover
         shell: bash
