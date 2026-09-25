@@ -5,7 +5,8 @@ TV_HOST=192.168.0.240
 TV=root@"$TV_HOST"
 KEY_SOURCE=/media/lgtv/id_rsa
 BASE=/var/lib/webosbrew/launcher-eim
-HOOK=/var/lib/webosbrew/init.d/launcher-eim-overlay
+HOOK=/var/lib/webosbrew/init.d/10-launcher-eim-overlay
+LEGACY_HOOK=/var/lib/webosbrew/init.d/launcher-eim-overlay
 APP=hu.szabi.launcher
 PHYSICAL_APP=com.webos.app.hdmi2
 
@@ -29,7 +30,7 @@ cleanup() {
       for _ in $(seq 1 120); do sleep 1; ssh_ok && break; done
     fi
     if ssh_ok; then
-      "${SSH[@]}" "rm -f '$BASE/enabled' '$HOOK'; mountpoint -q /var/lib/eim && umount /var/lib/eim || true; mountpoint -q '$BASE/frozen-view' && umount '$BASE/frozen-view' || true; rm -rf '$BASE'" >/dev/null 2>&1 || true
+      "${SSH[@]}" "rm -f '$BASE/enabled' '$HOOK' '$LEGACY_HOOK'; mountpoint -q /var/lib/eim && umount /var/lib/eim || true; mountpoint -q '$BASE/frozen-view' && umount '$BASE/frozen-view' || true; rm -rf '$BASE'" >/dev/null 2>&1 || true
       luna com.webos.service.applicationmanager/launch '{"id":"hu.szabi.launcher","params":{"source":"overlay-cold-rollback"}}' >/dev/null 2>&1 || true
       echo OVERLAY_COLD_ROLLBACK=ATTEMPTED
     fi
@@ -78,7 +79,16 @@ echo "BOOT_STATUS=$STATUS"
 echo "$STATUS" | grep -q '"firstAppId"[[:space:]]*:[[:space:]]*"hu.szabi.launcher"'
 echo COLD_BOOT_FIRST_APP_LAUNCHER=PASS
 
-"${SSH[@]}" "mountpoint -q /var/lib/eim && mountpoint -q '$BASE/frozen-view'"
+MOUNT_READY=0
+for i in $(seq 1 60); do
+  if "${SSH[@]}" "mountpoint -q /var/lib/eim && mountpoint -q '$BASE/frozen-view'"; then
+    MOUNT_READY=1
+    echo "EIM_OVERLAY_READY_AFTER_HALFSECONDS=$i"
+    break
+  fi
+  sleep 0.5
+done
+test "$MOUNT_READY" -eq 1
 echo "EIM_MOUNT=$("${SSH[@]}" 'findmnt /var/lib/eim')"
 echo "FROZEN_MOUNT=$("${SSH[@]}" "findmnt '$BASE/frozen-view'")"
 
