@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: parse timed Luna payload
+# retry: resolve retained instance via getWebProcessSize
 
 jobs:
   probe:
