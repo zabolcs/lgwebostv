@@ -1,0 +1,6 @@
+{
+  "name": "hu.szabi.launcher.startupprobe.service",
+  "version": "0.0.2",
+  "description": "Isolated launcher startup timing probe service",
+  "main": "service.js"
+}
