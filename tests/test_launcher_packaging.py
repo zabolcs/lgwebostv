@@ -111,6 +111,36 @@ class LauncherPackagingTests(unittest.TestCase):
             self.assertEqual(full_package["app"], "hu.szabi.launcher")
             self.assertEqual(quick_package["app"], "hu.szabi.launcher.quick")
 
+    def test_diagnostic_package_includes_activity_manager_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            BUILDER.BUILD = Path(temporary)
+            path, digest = BUILDER.build(
+                "launcher-startup-probe",
+                BUILDER.DIAGNOSTIC_APPS["launcher-startup-probe"],
+            )
+            first = path.read_bytes()
+            path, digest_again = BUILDER.build(
+                "launcher-startup-probe",
+                BUILDER.DIAGNOSTIC_APPS["launcher-startup-probe"],
+            )
+            self.assertEqual(first, path.read_bytes())
+            self.assertEqual(digest, digest_again)
+
+            files = data_files(first)
+            app_id = "hu.szabi.launcher.startupprobe"
+            service_id = app_id + ".service"
+            app_root = f"usr/palm/applications/{app_id}/"
+            service_root = f"usr/palm/services/{service_id}/"
+            package = json.loads(files[f"usr/palm/packages/{app_id}/packageinfo.json"])
+            manifest = json.loads(files[app_root + "appinfo.json"])
+
+            self.assertEqual(package["app"], app_id)
+            self.assertEqual(package["services"], [service_id])
+            self.assertEqual(manifest["version"], "0.0.2")
+            self.assertIn("activity.operation", manifest["requiredACG"])
+            for filename in ("package.json", "services.json", "service-core.js", "service.js"):
+                self.assertIn(service_root + filename, files)
+
     def test_quick_directory_contains_metadata_only(self) -> None:
         entries = sorted(path.name for path in (ROOT / "apps" / "launcher-quick").iterdir())
         self.assertEqual(entries, ["README-HU.md", "appinfo.json"])
