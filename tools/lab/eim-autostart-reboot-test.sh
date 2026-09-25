@@ -77,6 +77,7 @@ last_input_json() {
 }
 
 remove_probe_app() {
+  [ "$PRODUCTION_MODE" != "1" ] || return 0
   "${SSH[@]}" "/usr/bin/luna-send-pub -t 1 -w 30000 -f 'luna://com.webos.appInstallService/dev/remove' '{\"id\":\"$APP_ID\",\"subscribe\":true}'" >/dev/null 2>&1 || true
   for _ in $(seq 1 40); do
     "${SSH[@]}" "test ! -e '$MANIFEST'" >/dev/null 2>&1 && return 0
@@ -158,6 +159,13 @@ echo "EIM_BACKUP=$BACKUP_DIR"
 echo EIM_BACKUP_VERIFY=PASS
 
 if [ "$PRODUCTION_MODE" = "1" ]; then
+  "${SSH[@]}" "tar -C /media/developer/apps/usr/palm -czf - applications/hu.szabi.launcher packages/hu.szabi.launcher" >"$BACKUP_DIR/launcher-before.tar.gz"
+  sha256sum "$BACKUP_DIR/launcher-before.tar.gz" >>"$BACKUP_DIR/SHA256SUMS"
+  sha256sum -c "$BACKUP_DIR/SHA256SUMS"
+  echo PRODUCTION_LAUNCHER_BACKUP=PASS
+fi
+
+if [ "$PRODUCTION_MODE" = "1" ]; then
   python3 scripts/build-all.py >"$TMP/build.txt"
 else
   python3 tools/lab/build-eim-autostart-probe.py >"$TMP/build.txt"
@@ -171,8 +179,14 @@ DIGEST="$(sha256sum "$IPK" | awk '{print $1}')"
 "${SCP[@]}" scripts/install-local-on-tv.sh "$TV:$REMOTE/install.sh"
 "${SSH[@]}" "chmod 700 '$REMOTE/install.sh'; sh '$REMOTE/install.sh' '$REMOTE/probe.ipk' '$DIGEST'"
 "${SSH[@]}" "grep -q '\"supportGIP\"[[:space:]]*:[[:space:]]*true' '$MANIFEST'"
-echo PROBE_INSTALL=PASS
-echo PROBE_SUPPORT_GIP=PASS
+if [ "$PRODUCTION_MODE" = "1" ]; then
+  "${SSH[@]}" "grep -q '\"version\"[[:space:]]*:[[:space:]]*\"$VERSION\"' '$MANIFEST'"
+  echo PRODUCTION_INSTALL=PASS
+  echo PRODUCTION_SUPPORT_GIP=PASS
+else
+  echo PROBE_INSTALL=PASS
+  echo PROBE_SUPPORT_GIP=PASS
+fi
 
 if [ "$PRODUCTION_MODE" = "1" ]; then
   ADD='{"appId":"hu.szabi.launcher","pigImage":"","mvpdIcon":"","showPopup":false,"label":"Saját kezdőképernyő","description":"Production EIM early launcher"}'
@@ -296,19 +310,39 @@ for key,label in (
 PY
 
 echo BOOT_LOG_EIM_BEGIN
-"${SSH[@]}" "grep -n -E 'Try to launch first app|Input App|firstapp-launched|applicationManager/launch|hu.szabi.launcher.eimprobe|foregroundAppId' /var/log/bootd.log 2>/dev/null | head -220 || true"
+"${SSH[@]}" "grep -n -E 'Try to launch first app|Input App|firstapp-launched|applicationManager/launch|$APP_ID|foregroundAppId' /var/log/bootd.log 2>/dev/null | head -220 || true"
 echo BOOT_LOG_EIM_END
 
 POST_LAST="$(last_input_json 2>/dev/null || true)"
 echo "EIM_LAST_INPUT_POST_BOOT=$POST_LAST"
 
-# One-shot cleanup: unregister the virtual input, restore the original physical input,
-# remove the probe package, and verify the last input before declaring success.
-soft_restore
-test "$CLEANED" -eq 1
-trap 'rm -rf "$TMP"' EXIT
+if [ "$PRODUCTION_MODE" = "1" ] && [ "$KEEP_EIM_ON_SUCCESS" = "1" ]; then
+  echo "$POST_LAST" | grep -q "\"lastSourceAppId\":\"$APP_ID\""
+  luna_file production_devices com.webos.service.eim/getTotalDeviceList '{}'
+  PRODUCTION_DEVICES="$(extract_json "$TMP/production_devices.txt")"
+  echo "EIM_DEVICE_LIST_POST_BOOT=$PRODUCTION_DEVICES"
+  echo "$PRODUCTION_DEVICES" | grep -q "MVPD_IP-$APP_ID"
 
-echo PROBE_REMOVE=PASS
-echo ORIGINAL_INPUT_RESTORED=PASS
-echo PRODUCTION_LAUNCHER_UNCHANGED=PASS
-echo EIM_ONE_SHOT_TEST_COMPLETE=PASS
+  LAUNCH_COUNT="$("${SSH[@]}" "grep -c '\"id\":\"$APP_ID\"' /var/log/bootd.log 2>/dev/null || true")"
+  echo "PRODUCTION_BOOT_LOG_APP_ID_COUNT=$LAUNCH_COUNT"
+  echo "TV_GUARD_LAST_LAUNCH=$("${SSH[@]}" 'cat /tmp/hu.szabi.launcher.last-launch 2>/dev/null || true')"
+
+  "${SSH[@]}" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true
+  CLEANED=1
+  trap 'rm -rf "$TMP"' EXIT
+  echo EIM_PERSISTENT_REGISTRATION=PASS
+  echo FALLBACK_LEFT_ENABLED=PASS
+  echo "PRODUCTION_VERSION=$VERSION"
+  echo "ROLLBACK_BACKUP=$BACKUP_DIR"
+  echo EIM_PRODUCTION_INTEGRATION=PASS
+else
+  # One-shot diagnostic mode: unregister the virtual input, restore the original
+  # physical input, remove the probe package, and verify the last input.
+  soft_restore
+  test "$CLEANED" -eq 1
+  trap 'rm -rf "$TMP"' EXIT
+  echo PROBE_REMOVE=PASS
+  echo ORIGINAL_INPUT_RESTORED=PASS
+  echo PRODUCTION_LAUNCHER_UNCHANGED=PASS
+  echo EIM_ONE_SHOT_TEST_COMPLETE=PASS
+fi
