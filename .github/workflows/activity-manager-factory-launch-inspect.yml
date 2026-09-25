@@ -37,8 +37,8 @@ jobs:
           "${SSH[@]}" true
           echo TV_SSH=PASS
 
-          echo '=== FACTORY ACTIVITY ID 2 ==='
-          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":2,\"current\":true,\"internal\":true}' 2>&1" || true
+          echo '=== DIRECT TEST ACTIVITY ID 103 ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
 
           echo '=== MANAGER INFO ==='
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getManagerInfo' '{}' 2>&1" || true
