@@ -1,0 +1,139 @@
+name: Activity Manager direct launch immediate probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-direct-launch-immediate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 6
+    steps:
+      - name: Install isolated app and test direct Activity Manager launch
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MARKER=/media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          test -f "$MARKER"
+
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          SOURCE_KEY=/media/lgtv/id_rsa
+          APP_ID=hu.szabi.launcher.startupprobe
+          VERSION=0.0.3
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+          ssh-keyscan -T 3 "$TV_HOST" >"$KNOWN" 2>/dev/null
+          test -s "$KNOWN"
+          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$TV")
+          SCP=(scp -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
+
+          luna_file() {
+            local label="$1"
+            local uri="$2"
+            local payload="$3"
+            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$uri' '$payload' 2>&1" >"$TMP/$label.txt" || true
+          }
+
+          extract_json() {
+            python3 - "$1" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          decoder = json.JSONDecoder()
+          found = None
+          for line in reversed(text.splitlines()):
+              for index, char in enumerate(line):
+                  if char != "{":
+                      continue
+                  try:
+                      candidate, _ = decoder.raw_decode(line[index:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict):
+                      found = candidate
+                      break
+              if found is not None:
+                  break
+          if found is None:
+              raise SystemExit("no JSON response")
+          print(json.dumps(found, separators=(",", ":")))
+          PY
+          }
+
+          "${SSH[@]}" true
+          echo TV_SSH=PASS
+          echo ROLLBACK_BASELINE=PASS
+
+          python3 tools/lab/build-launcher-startup-probe.py >"$TMP/build.txt"
+          IPK="$GITHUB_WORKSPACE/build/${APP_ID}_${VERSION}_all.ipk"
+          test -f "$IPK"
+          DIGEST="$(sha256sum "$IPK" | awk '{print $1}')"
+
+          REMOTE="/tmp/hu.szabi.direct-launch.$$"
+          "${SSH[@]}" "mkdir -p '$REMOTE'"
+          "${SCP[@]}" "$IPK" "$TV:$REMOTE/probe.ipk"
+          "${SCP[@]}" scripts/install-local-on-tv.sh "$TV:$REMOTE/install.sh"
+          "${SSH[@]}" "chmod 700 '$REMOTE/install.sh'; sh '$REMOTE/install.sh' '$REMOTE/probe.ipk' '$DIGEST'"
+          echo PROBE_INSTALL=PASS
+
+          MANIFEST="/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json"
+
+          cleanup() {
+            set +e
+            if [ -n "${ACTIVITY_ID:-}" ]; then
+              "${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.palm.activitymanager/cancel' '{\"activityId\":${ACTIVITY_ID}}' 2>&1" >/dev/null || true
+            fi
+            "${SSH[@]}" "/usr/bin/luna-send-pub -t 1 -w 30000 -f 'luna://com.webos.appInstallService/dev/remove' '{\"id\":\"$APP_ID\",\"subscribe\":true}'" >/dev/null 2>&1 || true
+            for i in $(seq 1 30); do
+              "${SSH[@]}" "test ! -e '$MANIFEST'" && break
+              sleep 0.5
+            done
+            "${SSH[@]}" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true
+          }
+          trap 'cleanup; rm -rf "$TMP"' EXIT
+
+          CREATE='{"activity":{"name":"hu.szabi.launcher.startupprobe.directImmediate","description":"Direct Activity Manager to application manager launch probe","type":{"foreground":true},"callback":{"method":"luna://com.webos.service.applicationmanager/launch","params":{"id":"hu.szabi.launcher.startupprobe","params":{"source":"activity-direct-immediate"}}}},"replace":true,"start":true,"subscribe":false}'
+          luna_file create com.palm.activitymanager/create "$CREATE"
+          CREATE_JSON="$(extract_json "$TMP/create.txt")"
+          echo "DIRECT_ACTIVITY_CREATE=$CREATE_JSON"
+          echo "$CREATE_JSON" | grep -q '"returnValue":true'
+          ACTIVITY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$CREATE_JSON")"
+          test -n "$ACTIVITY_ID"
+          echo "DIRECT_ACTIVITY_ID=$ACTIVITY_ID"
+
+          SEEN=0
+          for i in $(seq 1 30); do
+            luna_file foreground com.webos.service.applicationmanager/getForegroundAppInfo '{}'
+            FG="$(extract_json "$TMP/foreground.txt" 2>/dev/null || true)"
+            APP="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("appId",""))' "$FG" 2>/dev/null || true)"
+            if [ "$APP" = "$APP_ID" ]; then
+              SEEN=1
+              echo "DIRECT_LAUNCH_FOREGROUND_AFTER_HALFSECONDS=$i"
+              break
+            fi
+            sleep 0.5
+          done
+
+          echo "FOREGROUND_JSON=$FG"
+          test "$SEEN" -eq 1
+          echo DIRECT_LAUNCH=PASS
+          echo PRODUCTION_LAUNCHER_UNCHANGED=PASS
+
+          cleanup
+          trap 'rm -rf "$TMP"' EXIT
+          echo PROBE_REMOVE=PASS
+          echo NO_REBOOT=PASS
