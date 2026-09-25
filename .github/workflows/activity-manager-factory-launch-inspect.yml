@@ -49,6 +49,27 @@ jobs:
           echo '=== SMARTDEMOKIT APPINFO/SERVICE REFERENCES ==='
           "${SSH[@]}" "grep -R -n -E 'smartdemokit|demo\.smartdemokit' /usr/palm /media/cryptofs/apps /media/developer/apps 2>/dev/null | head -160 || true"
 
+          echo '=== EARLY BOOT / POWER ACTIVITIES ==='
+          for name in \
+            adoverlay_wake_up_by_power_on \
+            acr_wake_up_by_power_on \
+            com.webos.service.admanager.InstantBootComplete \
+            com.webos.service.wasupolicymanager.start \
+            com.webos.service.tvdataexchanger
+          do
+            echo "--- ACTIVITY_NAME=$name ---"
+            "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityName\":\"$name\",\"current\":true,\"internal\":true}' 2>&1" || true
+          done
+
+          echo '=== BOOT MANAGER CURRENT STATUS ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.bootManager/getBootStatus' '{}' 2>&1" || true
+
+          echo '=== BOOT LOG EARLY SIGNALS ==='
+          "${SSH[@]}" "grep -n -E 'minimal-boot-done|core-boot-done|init-boot-done|rest-boot-done|boot-done|snapshot-resume-done|firstAppLaunched|InstantBootComplete|power.?on|Power.?On' /var/log/bootd.log /var/log/messages 2>/dev/null | tail -240 || true"
+
+          echo '=== EARLY ACTIVITY DEFINITIONS / SOURCES ==='
+          "${SSH[@]}" "grep -R -n -E 'adoverlay_wake_up_by_power_on|acr_wake_up_by_power_on|InstantBootComplete|firstAppLaunched|minimal-boot-done|core-boot-done|rest-boot-done' /usr/palm/services /usr/share/luna-service2 /var/luna-service2 2>/dev/null | head -320 || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
