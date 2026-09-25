@@ -1,10 +1,6 @@
 name: Guarded EIM autostart boot measurement
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/eim-autostart-reboot-test.yml'
   workflow_dispatch:
 
 permissions:
