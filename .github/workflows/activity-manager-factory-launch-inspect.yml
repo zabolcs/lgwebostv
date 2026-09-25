@@ -136,6 +136,13 @@ jobs:
           echo '=== FIRST APP / HOME AUTOLAUNCH CONFIG REFERENCES ==='
           "${SSH[@]}" "grep -R -n -i -E 'firstAppId|firstapp-launched|Try to launch first app|homeAutoLaunch|CoverAppLaunchAction|FirstAppLaunch|checkHomeAutoLaunchValue' /etc /usr/palm /usr/share 2>/dev/null | head -320 || true"
 
+          echo '=== HOTEL AUTO-BROWSER / POWER-ON REFERENCES ==='
+          "${SSH[@]}" "grep -R -n -i -E 'autoBrowserUrl|enableAutoBrowser|powerOnDefaultAv|Hotel Input App|Auto Browser' /etc /usr/palm /usr/share /var 2>/dev/null | head -360 || true"
+
+          echo '=== CURRENT HOTEL / GENERAL BOOT SETTINGS ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"general\",\"keys\":[\"homeAutoLaunch\",\"checkHomeAutoLaunchValue\",\"checkForcedInputPowerOn\"],\"subscribe\":false}' 2>&1" || true
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"hotelMode\",\"keys\":[\"enableAutoBrowser\",\"autoBrowserUrl\",\"powerOnDefaultAv\",\"powerOnStatus\"],\"subscribe\":false}' 2>&1" || true
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
