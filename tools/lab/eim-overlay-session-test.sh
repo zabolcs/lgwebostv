@@ -94,6 +94,15 @@ echo "RUNTIME_GET_LAST_INPUT=$LIVE_API"
 echo "$LIVE_API" | grep -q '"lastSourceAppId"[[:space:]]*:[[:space:]]*"com.webos.app.hdmi2"'
 echo RUNTIME_ISOLATION=PASS
 
+echo FAILSAFE_SESSION_CONFIRM_WAIT=START
+sleep 50
+"${SSH[@]}" "test ! -e '$BASE/boot-pending'"
+"${SSH[@]}" "test -f '$BASE/last-good'"
+"${SSH[@]}" "test ! -e '$BASE/disabled-failsafe'"
+echo "FAILSAFE_SESSION_LAST_GOOD=$("${SSH[@]}" "cat '$BASE/last-good'")"
+echo "FAILSAFE_SESSION_LOG=$("${SSH[@]}" "tail -20 /tmp/hu.szabi.launcher-eim-overlay.log 2>/dev/null || true")"
+echo FAILSAFE_SESSION_CONFIRM=PASS
+
 "${SSH[@]}" "umount /var/lib/eim; umount '$FROZEN'"
 echo UNMOUNT=PASS
 
