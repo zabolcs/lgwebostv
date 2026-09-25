@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# one-shot: cached prewarm process proof v0.4.6
+# one-shot: cached prewarm process proof v0.4.6 (dispatch)
 
 jobs:
   rollout:
