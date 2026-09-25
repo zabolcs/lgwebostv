@@ -447,6 +447,29 @@ handle_power_state Active
         self.assertEqual([c['payload']['id'] for c in launches], [server.LAUNCHER_APP_ID])
         self.assertEqual(launches[0]['payload']['params']['source'], 'quick-start-fast-lane')
 
+    def test_resume_edge_cover_precedes_active_fast_lane_without_duplicate_cover(self):
+        calls, _ = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+touch "$QUICK_WAKE_ARMED" "$QUICK_COVER_READY"
+resume_edge_cover
+echo Active >"$DIR/current-power"
+echo 'Active Standby' >"$POWER_STATE"
+handle_power_state Active
+''')
+        launches = [call["payload"] for call in calls if call["uri"].endswith("/launch")]
+        self.assertEqual([call["id"] for call in launches],
+                         [server.LAUNCHER_OVERLAY_APP_ID, server.LAUNCHER_APP_ID])
+        self.assertEqual(launches[0]["params"]["source"], "quick-start-resume-edge")
+        self.assertEqual(launches[1]["params"]["source"], "quick-start-fast-lane")
+
+    def test_resume_edge_cover_requires_real_standby_arm(self):
+        calls, _ = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+touch "$QUICK_COVER_READY"
+resume_edge_cover || true
+''')
+        self.assertEqual(self.launches(calls), [])
+
     def test_quick_start_fast_lane_uses_prewarmed_cover_before_full_launcher(self):
         calls, _ = self.exercise_wake_guard('''
 quick_fast_lane_safe() { return 0; }
