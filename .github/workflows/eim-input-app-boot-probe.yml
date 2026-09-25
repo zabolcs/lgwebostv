@@ -1,10 +1,6 @@
 name: EIM input-app boot probe
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/eim-input-app-boot-probe.yml'
   workflow_dispatch:
 
 permissions:
