@@ -165,6 +165,12 @@ jobs:
           "${SSH[@]}" "echo ---getLastInput---; luna-send -t 1 -f -w 4000 'luna://com.webos.service.eim/getLastInput' '{}' 2>&1 || true"
           "${SSH[@]}" "echo ---getTotalDeviceList---; luna-send -t 1 -f -w 4000 'luna://com.webos.service.eim/getTotalDeviceList' '{}' 2>&1 || true"
 
+          echo '=== WEBOS / HOMEBREW AUTOSTART CAPABILITY ==='
+          "${SSH[@]}" "echo ---webos-release---; cat /etc/webos-release 2>/dev/null || true"
+          "${SSH[@]}" "echo ---hb-package---; cat /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/package.json 2>/dev/null || cat /media/cryptofs/apps/usr/palm/services/org.webosbrew.hbchannel.service/package.json 2>/dev/null || true"
+          "${SSH[@]}" "echo ---hb-services---; cat /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/services.json 2>/dev/null || cat /media/cryptofs/apps/usr/palm/services/org.webosbrew.hbchannel.service/services.json 2>/dev/null || true"
+          "${SSH[@]}" "echo ---hb-activity---; luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityName\":\"org.webosbrew.hbchannel.service.autostart\",\"creator\":{\"serviceId\":\"org.webosbrew.hbchannel.service\"},\"current\":false,\"internal\":false}' 2>&1 || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
