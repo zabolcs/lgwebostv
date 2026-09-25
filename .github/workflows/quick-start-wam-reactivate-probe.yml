@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: force fresh renderer before instance capture
+# retry: memory-reclaim kill before instance capture
 
 jobs:
   probe:
