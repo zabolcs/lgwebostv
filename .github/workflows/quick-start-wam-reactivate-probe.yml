@@ -1,0 +1,31 @@
+name: Quick Start direct WAM reactivation probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/quick-start-wam-reactivate-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/quick-start-wam-reactivate-probe.sh
+      - name: Measure direct WAM reactivation
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/quick-start-wam-reactivate-probe.sh
