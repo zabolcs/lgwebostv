@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   offline-validation:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
