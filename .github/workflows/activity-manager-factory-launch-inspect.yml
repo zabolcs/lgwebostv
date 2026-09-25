@@ -143,6 +143,16 @@ jobs:
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"general\",\"keys\":[\"homeAutoLaunch\",\"checkHomeAutoLaunchValue\",\"checkForcedInputPowerOn\"],\"subscribe\":false}' 2>&1" || true
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"hotelMode\",\"keys\":[\"enableAutoBrowser\",\"autoBrowserUrl\",\"powerOnDefaultAv\",\"powerOnStatus\"],\"subscribe\":false}' 2>&1" || true
 
+          echo '=== FIRST-APP SETTING DISCOVERY ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"hotelMode\",\"subscribe\":false}' 2>&1" || true
+          "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"general\",\"subscribe\":false}' 2>&1" || true
+
+          echo '=== BOOTD / FIRST APP STRING REFERENCES ==='
+          "${SSH[@]}" "for f in /usr/palm/services/com.webos.bootManager/* /usr/bin/*boot* /usr/sbin/*boot*; do test -f \"$f\" || continue; echo ---$f; strings \"$f\" 2>/dev/null | grep -i -E 'Last Input App|HotelMode Default App|HotelMode Default Input|powerOnDefaultAv|powerOnStatus|autoBrowser|homeAutoLaunch|first app|firstAppId' | head -160 || true; done"
+
+          echo '=== SETTINGS / PREF FILE REFERENCES ==='
+          "${SSH[@]}" "grep -R -n -i -E 'powerOnDefaultAv|powerOnStatus|defaultApp|lastInput|last input|firstAppId|homeAutoLaunch|autoBrowserUrl|enableAutoBrowser' /var/luna /var/palm /var/preferences /etc/palm /usr/palm 2>/dev/null | head -400 || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
