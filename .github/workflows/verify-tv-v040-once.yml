@@ -28,7 +28,7 @@ jobs:
           chmod 600 "$TMP/id_rsa"
           ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
           SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
-          ACTUAL_SHA="$("${SSH[@]}" "sha256sum /var/lib/webosbrew/launcher-home/guard.sh | awk '{print \\$1}'")"
+          ACTUAL_SHA="$("${SSH[@]}" "sha256sum /var/lib/webosbrew/launcher-home/guard.sh | cut -d\' \' -f1")"
           echo "TV_GUARD_SHA=$ACTUAL_SHA"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
           "${SSH[@]}" "grep -q '# v0.4.0 guard:' /var/lib/webosbrew/launcher-home/guard.sh"
