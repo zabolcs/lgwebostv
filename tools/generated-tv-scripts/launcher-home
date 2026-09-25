@@ -1,0 +1,5 @@
+#!/bin/sh
+DIR=/var/lib/webosbrew/launcher-home
+[ -f "$DIR/enabled" ] || exit 0
+nohup "$DIR/guard.sh" </dev/null >>/tmp/hu.szabi.launcher-home.log 2>&1 &
+exit 0

@@ -1,0 +1,5 @@
+#!/bin/sh
+DIR=/var/lib/webosbrew/inputhook-watchdog
+[ -f "$DIR/enabled" ] || exit 0
+"$DIR/watchdog.sh" >>/tmp/hu.szabi.inputhook-watchdog.log 2>&1 &
+exit 0

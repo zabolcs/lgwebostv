@@ -2,7 +2,8 @@
 
 Continue the LG webOS custom launcher/control suite from this repository. Read `README.md`,
 `docs/TECHNICAL-HANDOFF-LOCAL-DEPLOYMENT.md`, `docs/AUTOSTART-ACTIVITYMANAGER-KISERLET.md`,
-`TEST-REPORT.md`, and the launcher result notes under `tools/lab/` before changing code.
+`docs/SOURCE-COMPLETENESS-AUDIT.md`, `TEST-REPORT.md`, and the launcher result notes under
+`tools/lab/` before changing code.
 
 The repository contains editable source only. It intentionally excludes production keys, SSAP
 credentials, configs, compiled IPKs/native binaries, logs, TV/CT snapshots and toolchains. Ask the

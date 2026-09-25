@@ -11,6 +11,8 @@ Source-only checkpoint from 2026-09-25. It contains the editable source for:
 - the injection-free evdev remote broker;
 - the restricted go2rtc player bridge;
 - build/install scripts and regression tests.
+- current diagnostic, recovery and measurement helpers under `tools/lab`;
+- generated TV shell-script references under `tools/generated-tv-scripts`.
 
 No IPK, native binary, compiler archive, private key, SSAP credential, production configuration,
 container snapshot, TV snapshot or runtime log is included. Exact live restore material belongs in
@@ -29,7 +31,9 @@ python scripts/build-all.py
 ```
 
 Run the Python and Node tests under `tests/`, `remote-control/tests/`, and each app's `tests/`
-directory before deployment. See `TEST-REPORT.md`, `README-HU.md`, and the component READMEs.
+directory before deployment. The native broker test always validates `remote-broker.c`; if CI first
+builds `remote-broker/remote-broker`, it also validates that output as an ARM32 little-endian ELF.
+See `TEST-REPORT.md`, `README-HU.md`, and the component READMEs.
 
 ## Safety-critical history
 
