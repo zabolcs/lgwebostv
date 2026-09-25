@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: capture retained instance via webProcessCreated
+# retry: force fresh renderer before instance capture
 
 jobs:
   probe:
