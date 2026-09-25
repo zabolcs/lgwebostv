@@ -2106,7 +2106,7 @@ for pid in reversed(ordered):
 """
 
     GUARD_SCRIPT = r"""#!/bin/sh
-# v0.4.2 guard: direct Active-subscription cover plus full-launch fallback.
+# v0.4.0 guard: prewarmed Quick Start cover plus direct full-launch fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -2130,8 +2130,6 @@ QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
 QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
 QUICK_COVER_QUEUE=/tmp/hu.szabi.launcher.quick-cover-prewarm-queued
-QUICK_EDGE_ATTEMPT=/tmp/hu.szabi.launcher.quick-edge-attempt
-QUICK_EDGE_ACCEPTED=/tmp/hu.szabi.launcher.quick-edge-accepted
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
@@ -2193,7 +2191,7 @@ arm_power_startup() {
 
 settle_wake() {
   diagnostic "wake $1 foreground=$current"
-  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_EDGE_ATTEMPT" "$QUICK_EDGE_ACCEPTED"
+  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
 }
 
 wake_window_open() {
@@ -2235,29 +2233,6 @@ quick_fast_lane_safe() {
   return 0
 }
 
-active_edge_cover_worker() {
-  [ -f "$QUICK_WAKE_ARMED" ] || { rm -f "$QUICK_EDGE_ATTEMPT"; return 1; }
-  [ -f "$QUICK_COVER_READY" ] || { rm -f "$QUICK_EDGE_ATTEMPT"; return 1; }
-  [ ! -f "$HOME_ACTIVE" ] || { rm -f "$QUICK_EDGE_ATTEMPT"; return 1; }
-  if ! quick_fast_lane_safe; then
-    rm -f "$QUICK_EDGE_ATTEMPT"
-    return 1
-  fi
-  origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
-  display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
-  payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-active-edge","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
-  diagnostic 'active edge cover dispatch'
-  result=$(luna-send-pub -w 1000 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
-  if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
-    touch "$QUICK_EDGE_ACCEPTED"
-    diagnostic 'active edge cover accepted'
-    return 0
-  fi
-  rm -f "$QUICK_EDGE_ATTEMPT"
-  diagnostic 'active edge cover failed; regular fast lane remains available'
-  return 1
-}
-
 quick_start_fast_launch() {
   [ -f "$QUICK_WAKE_ARMED" ] || return 1
   [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
@@ -2282,15 +2257,7 @@ quick_start_fast_launch() {
   origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
 
-  if [ -f "$QUICK_EDGE_ATTEMPT" ] && [ ! -f "$QUICK_EDGE_ACCEPTED" ]; then
-    i=0
-    while [ "$i" -lt 3 ] && [ -f "$QUICK_EDGE_ATTEMPT" ] && [ ! -f "$QUICK_EDGE_ACCEPTED" ]; do
-      /bin/usleep 100000
-      i=$((i + 1))
-    done
-  fi
-
-  if [ -f "$QUICK_COVER_READY" ] && [ ! -f "$QUICK_EDGE_ACCEPTED" ]; then
+  if [ -f "$QUICK_COVER_READY" ]; then
     running=$(luna-send -t 1 -f -w 900 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
     if echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
       cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
@@ -2631,24 +2598,9 @@ power_loop() {
     while IFS= read -r line; do
       state=$(json_value "$line" state)
       [ -n "$state" ] || continue
-      # Suspend arms the direct wake edge. On the subsequent native Active
-      # subscription event, dispatch only the already-prewarmed cover in a
-      # background helper. The subscription reader itself remains non-blocking.
-      case "$state" in
-        'Active Standby'|Suspend|'Screen Off')
-          touch "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED"
-          rm -f "$QUICK_EDGE_ATTEMPT" "$QUICK_EDGE_ACCEPTED"
-          ;;
-        Active)
-          if [ -f "$QUICK_WAKE_ARMED" ] && [ -f "$QUICK_COVER_READY" ] &&
-             [ ! -f "$QUICK_EDGE_ATTEMPT" ] && [ ! -f "$QUICK_EDGE_ACCEPTED" ]; then
-            touch "$QUICK_EDGE_ATTEMPT"
-            active_edge_cover_worker 9>&- &
-          fi
-          ;;
-        'Screen Saver') ;;
-        *) touch "$WAKE_SIGNAL";;
-      esac
+      # Never wait on another Luna call here: Suspend must invalidate a launch
+      # even while the single worker is blocked in a foreground/boot query.
+      case "$state" in Active|'Screen Saver') ;; *) touch "$WAKE_SIGNAL";; esac
       printf '%s\n' "$state" >"$POWER_EVENT.new"
       mv -f "$POWER_EVENT.new" "$POWER_EVENT"
     done
@@ -2720,11 +2672,11 @@ run_pending_tick() {
 }
 
 # START WORKER (test fixtures source only the functions above).
-rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_EDGE_ATTEMPT" "$QUICK_EDGE_ACCEPTED"
+rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.4.2 started'
+diagnostic 'guard v0.4.0 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
