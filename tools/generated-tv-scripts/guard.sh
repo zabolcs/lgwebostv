@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.4.0 guard: prewarmed Quick Start cover plus direct full-launch fallback.
+# v0.4.8 guard: trusted native Active event skips redundant Quick Start power RPC.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -166,6 +166,7 @@ quick_fast_lane_safe() {
 }
 
 quick_start_fast_launch() {
+  trusted_active=${1:-no}
   [ -f "$QUICK_WAKE_ARMED" ] || return 1
   [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
   if [ -f "$HOME_ACTIVE" ]; then
@@ -176,10 +177,13 @@ quick_start_fast_launch() {
     diagnostic 'quick fast lane blocked: EIM overlay not healthy'
     return 1
   fi
-  # QUICK_WAKE_ARMED is created only by a real native standby state. A fresh
-  # power RPC immediately before dispatch is therefore sufficient here; the
-  # slower conservative path still handles every rejected/late launch.
-  if [ "$(fresh_power)" != Active ]; then
+  # The power subscriber can hand the sole worker the exact native Active
+  # event that woke it. When that event follows QUICK_WAKE_ARMED, another
+  # synchronous tvpower RPC only adds resume latency. Every non-event path
+  # keeps the original v0.4.0 fresh-power verification.
+  if [ "$trusted_active" = trusted-active ]; then
+    diagnostic 'quick trusted Active event'
+  elif [ "$(fresh_power)" != Active ]; then
     diagnostic 'quick fast lane blocked: power not Active'
     return 1
   fi
@@ -221,6 +225,7 @@ quick_start_fast_launch() {
 
 handle_power_state() {
   state=$1
+  trusted_active=${2:-no}
   previous=$(cat "$POWER_STATE" 2>/dev/null)
   [ "$state" = "$previous" ] && return 0
   printf '%s\n' "$state" >"$POWER_STATE"
@@ -231,7 +236,7 @@ handle_power_state() {
       if [ "$previous" != 'Screen Saver' ]; then
         arm_power_startup
         if [ -f "$QUICK_WAKE_ARMED" ]; then
-          quick_start_fast_launch || true
+          quick_start_fast_launch "$trusted_active" || true
           rm -f "$QUICK_WAKE_ARMED"
         fi
       fi
@@ -554,6 +559,7 @@ wake_gap_loop() {
 
 control_tick() {
   # Called exclusively by the main worker. No other loop launches or preloads.
+  event_state=${2:-}
   # During normal viewing, a Home event can skip the periodic power query;
   # the actual dispatch still rechecks power immediately before launching.
   if [ "$1" = foreground-event ] && [ -f "$BOOT_READY" ] &&
@@ -562,6 +568,15 @@ control_tick() {
      [ ! -f "$POWER_EVENT" ]; then
     replace_visible_factory_home
     return
+  fi
+  # A freshly consumed native Active subscription event plus the standby-only
+  # arm marker is stronger than a second cached/polled query. Handle that exact
+  # edge directly, while all periodic and ambiguous paths remain unchanged.
+  if [ "$1" = power-event ] && [ "$event_state" = Active ] &&
+     [ -f "$QUICK_WAKE_ARMED" ]; then
+    rm -f "$WAKE_SIGNAL"
+    handle_power_state Active trusted-active
+    return 0
   fi
   if [ -f "$WAKE_SIGNAL" ]; then
     rm -f "$WAKE_SIGNAL"
@@ -584,6 +599,7 @@ run_pending_tick() {
   if [ -f "$POWER_EVENT" ] || [ -f "$FOREGROUND_EVENT" ] ||
      [ -f "$WAKE_SIGNAL" ] || [ "$now_tick" -ge "$next_poll" ]; then
     tick_reason=poll
+    event_state=
     [ ! -f "$FOREGROUND_EVENT" ] || tick_reason=foreground-event
     # Consume before the RPCs: an event delivered while they run must remain
     # pending for the next iteration. Cached event contents never allow launch.
@@ -592,9 +608,10 @@ run_pending_tick() {
     # if the subscriber publishes between the predicate and this handoff.
     if mv -f "$POWER_EVENT" "$POWER_EVENT.processing" 2>/dev/null; then
       tick_reason=power-event
+      event_state=$(cat "$POWER_EVENT.processing" 2>/dev/null)
       rm -f "$POWER_EVENT.processing"
     fi
-    control_tick "$tick_reason"
+    control_tick "$tick_reason" "$event_state"
     # Delay is measured after work. RPC latency never creates a retry burst.
     delay=2; [ ! -f "$POWER_STARTUP" ] || delay=1
     next_poll=$(( $(date +%s) + delay ))
@@ -606,7 +623,7 @@ rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.4.0 started'
+diagnostic 'guard v0.4.8 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
