@@ -18,7 +18,7 @@ mkdir -p "$BACKUP_DIR"
 TMP="$(mktemp -d)"
 KEY="$TMP/id_rsa"
 KNOWN="$TMP/known_hosts"
-REMOTE="/tmp/hu.szabi.eim-autostart.$"
+REMOTE="/tmp/hu_szabi_eim_autostart_${GITHUB_RUN_ID:-manual}"
 MANIFEST="/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json"
 CLEANED=0
 REBOOT_SENT=0
