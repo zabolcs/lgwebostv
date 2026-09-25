@@ -1,4 +1,4 @@
-name: First-app-launched Activity Manager reboot test
+name: Direct Activity Manager launch reboot measurement
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Replace bootup probe and measure firstAppLaunched across reboot
+      - name: Install probe, arm direct launch, reboot, measure and clean
         shell: bash
         run: |
           set -euo pipefail
@@ -29,8 +29,8 @@ jobs:
           TV_HOST=192.168.0.240
           TV=root@"$TV_HOST"
           SOURCE_KEY=/media/lgtv/id_rsa
+          APP_ID=hu.szabi.launcher.startupprobe
           SERVICE_ID=hu.szabi.launcher.startupprobe.service
-          OLD_ACTIVITY_ID=483
 
           TMP="$(mktemp -d)"
           trap 'rm -rf "$TMP"' EXIT
@@ -100,31 +100,9 @@ jobs:
           "${SSH[@]}" "chmod 700 '$REMOTE/install.sh'; sh '$REMOTE/install.sh' '$REMOTE/probe.ipk' '$SHA'"
           echo PROBE_INSTALL=PASS
 
-          luna_file status "$SERVICE_ID/status" '{}' || true
-          STATUS="$(extract_json "$TMP/status.txt" 2>/dev/null || true)"
-          if ! echo "$STATUS" | grep -q '"returnValue":true'; then
-            "${SSH[@]}" "/usr/bin/run-js-service -n '/media/developer/apps/usr/palm/services/$SERVICE_ID' >/tmp/startupprobe-firstapp-activate.log 2>&1 &" || true
-            sleep 2
-            luna_file status_retry "$SERVICE_ID/status" '{}'
-            STATUS="$(extract_json "$TMP/status_retry.txt")"
-          fi
-          echo "$STATUS" | grep -q '"returnValue":true'
-          echo SERVICE_STATUS=PASS
+          echo DIRECT_TEST_PREPARED=PASS
 
-          luna_file cancel_old "$SERVICE_ID/cancel" "{\"manager\":\"palm\",\"activityId\":$OLD_ACTIVITY_ID}" || true
-          CANCEL_OLD="$(extract_json "$TMP/cancel_old.txt" 2>/dev/null || true)"
-          echo "OLD_BOOTUP_CANCEL=$CANCEL_OLD"
-
-          luna_file old_details com.palm.activitymanager/getDetails "{\"activityId\":$OLD_ACTIVITY_ID,\"current\":false,\"internal\":false}" || true
-          OLD_DETAILS="$(extract_json "$TMP/old_details.txt" 2>/dev/null || true)"
-          echo "OLD_BOOTUP_DETAILS_AFTER_CANCEL=$OLD_DETAILS"
-          if echo "$OLD_DETAILS" | grep -q '"returnValue":true'; then
-            echo OLD_BOOTUP_ACTIVITY_STILL_PRESENT
-            exit 1
-          fi
-          echo OLD_BOOTUP_ACTIVITY_REMOVED=PASS
-
-          CREATE_PAYLOAD='{"activity":{"name":"hu.szabi.launcher.startupprobe.service.firstAppLaunched.root","description":"Persistent first-app-launched callback timing probe","type":{"foreground":true,"persist":true},"trigger":{"method":"luna://com.webos.bootManager/getBootStatus","params":{"subscribe":true},"where":{"prop":"firstAppLaunched","op":"=","val":true}},"callback":{"method":"luna://hu.szabi.launcher.startupprobe.service/probe","params":{"kind":"firstAppLaunched"}}},"replace":true,"start":true,"subscribe":false}'
+          CREATE_PAYLOAD='{"activity":{"name":"hu.szabi.launcher.startupprobe.directFirstApp","description":"Bounded direct firstAppLaunched application launch measurement","type":{"foreground":true,"persist":true,"continuous":true},"trigger":{"method":"luna://com.webos.bootManager/getBootStatus","params":{"subscribe":true},"where":{"prop":"firstAppLaunched","op":"=","val":true}},"callback":{"method":"luna://com.webos.service.applicationmanager/launch","params":{"id":"hu.szabi.launcher.startupprobe","params":{"source":"activity-direct-firstapp"}}}},"replace":true,"start":true,"subscribe":false}'
           luna_file arm_firstapp com.palm.activitymanager/create "$CREATE_PAYLOAD"
           ARM="$(extract_json "$TMP/arm_firstapp.txt")"
           echo "FIRSTAPP_ARM=$ARM"
@@ -140,13 +118,10 @@ jobs:
           echo "$DETAILS" | grep -q '"returnValue":true'
           echo "$DETAILS" | grep -q 'firstAppLaunched'
           echo "$DETAILS" | grep -q 'com.webos.bootManager/getBootStatus'
-          echo "$DETAILS" | grep -q "$SERVICE_ID/probe"
-          echo FIRSTAPP_ACTIVITY_VERIFIED=PASS
+          echo "$DETAILS" | grep -q 'applicationmanager/launch'
+          echo DIRECT_ACTIVITY_VERIFIED=PASS
 
           sleep 2
-          luna_file pre_status "$SERVICE_ID/status" '{}'
-          PRE_STATUS="$(extract_json "$TMP/pre_status.txt")"
-          echo "PRE_REBOOT_STATUS=$PRE_STATUS"
 
           PRE_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
           echo "PRE_REBOOT_UPTIME_SECONDS=$PRE_UPTIME"
