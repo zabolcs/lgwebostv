@@ -103,7 +103,7 @@ echo "RUNNING_RAW=$RUNNING"
 echo "PROCESSES_RAW=$PROCESSES"
 echo "WAM_PROCESS_EVENTS_RAW=$EVENTS"
 echo "OVERLAY_LOGS_RAW=$LOGS"
-PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$EVENTS" "$LOGS" "$origin" "$display" "$OVERLAY" <<'PY'
+PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$EVENTS" "$LOGS" "$CDP" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
 def timed_payload(raw):
     marker="payload "
@@ -118,10 +118,36 @@ running=timed_payload(sys.argv[2])
 processes=timed_payload(sys.argv[3])
 events_raw=sys.argv[4]
 logs_raw=sys.argv[5]
-origin=sys.argv[6]; display=json.loads(sys.argv[7]); appid=sys.argv[8]
+cdp=json.loads(sys.argv[6])
+origin=sys.argv[7]; display=json.loads(sys.argv[8]); appid=sys.argv[9]
 item=next((x for x in running.get("running",[]) if x.get("id")==appid),None)
 instance_id=(item or {}).get("instanceId")
 webprocess_id=(item or {}).get("webprocessid")
+if not instance_id:
+    raw=cdp.get("launchParams") or ""
+    try:
+        parsed=json.loads(raw) if isinstance(raw,str) else raw
+    except Exception:
+        parsed={}
+    for _ in range(8):
+        if not isinstance(parsed,dict):
+            break
+        if parsed.get("instanceId"):
+            instance_id=str(parsed["instanceId"])
+            break
+        if "launchParams" in parsed:
+            parsed=parsed["launchParams"]
+        elif "parameters" in parsed:
+            parsed=parsed["parameters"]
+        elif isinstance(parsed.get("params"),dict):
+            parsed=parsed["params"]
+        elif isinstance(parsed.get("payload"),dict):
+            parsed=parsed["payload"]
+        else:
+            break
+        if isinstance(parsed,str):
+            try: parsed=json.loads(parsed)
+            except Exception: break
 if not instance_id:
     decoder=json.JSONDecoder()
     pos=0
@@ -165,7 +191,7 @@ if not instance_id:
         if instance_id:
             break
 if not instance_id:
-    raise SystemExit("overlay instanceId missing from WAM events/running/process data and TV logs")
+    raise SystemExit("overlay instanceId missing from launchParams/WAM events/running/process data/TV logs")
 desc=appinfo.get("appInfo")
 if not isinstance(desc,dict):
     raise SystemExit("overlay appInfo missing")
