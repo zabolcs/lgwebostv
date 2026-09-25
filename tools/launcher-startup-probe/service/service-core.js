@@ -36,8 +36,23 @@ function immediateCreateRequest() {
   };
 }
 
+function bootupCreateRequest() {
+  return {
+    activity: {
+      name: SERVICE_ID + '.bootup',
+      description: 'Persistent launcher bootup callback timing probe',
+      type: {persist: true, continuous: true},
+      requirements: {bootup: true},
+      callback: {method: 'luna://' + SERVICE_ID + '/probe', params: {kind: 'bootup'}}
+    },
+    replace: true,
+    start: true,
+    subscribe: false
+  };
+}
+
 function normalizeKind(value) {
-  return value === 'immediate' ? 'immediate' : null;
+  return value === 'immediate' || value === 'bootup' ? value : null;
 }
 
 function positiveActivityId(value) {
@@ -70,6 +85,7 @@ module.exports = {
   STATE_PATH: STATE_PATH,
   managerUri: managerUri,
   immediateCreateRequest: immediateCreateRequest,
+  bootupCreateRequest: bootupCreateRequest,
   normalizeKind: normalizeKind,
   positiveActivityId: positiveActivityId,
   publicResult: publicResult
