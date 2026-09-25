@@ -1,0 +1,126 @@
+name: Activity Manager read-only preflight
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Read-only TV capability probe
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TV_HOST=192.168.0.240
+          SOURCE_KEY=/media/lgtv/id_rsa
+          test -f "$SOURCE_KEY"
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+          ssh-keyscan -T 3 "$TV_HOST" > "$KNOWN" 2>/dev/null
+          test -s "$KNOWN"
+
+          SSH=(ssh -T
+            -i "$KEY"
+            -o BatchMode=yes
+            -o ConnectTimeout=5
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$KNOWN"
+            root@"$TV_HOST"
+          )
+
+          "${SSH[@]}" 'command -v luna-send >/dev/null && test -r /proc/uptime'
+          echo "TV_SSH=PASS"
+
+          run_luna() {
+            local uri="$1"
+            local payload="$2"
+            "${SSH[@]}" "luna-send -t 1 -f -w 2000 'luna://$uri' '$payload'"
+          }
+
+          run_luna com.webos.service.activitymanager/getManagerInfo '{}' > "$TMP/activity.json"
+          run_luna com.webos.bootManager/getBootStatus '{}' > "$TMP/boot.json"
+          run_luna com.webos.service.tvpower/power/getPowerState '{}' > "$TMP/power.json"
+          run_luna com.webos.service.applicationmanager/getForegroundAppInfo '{}' > "$TMP/foreground.json"
+          "${SSH[@]}" 'cat /proc/uptime' > "$TMP/uptime.txt"
+
+          python3 - "$TMP" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+
+          def load(name):
+              text = (root / name).read_text(encoding="utf-8", errors="replace").strip()
+              if not text:
+                  raise SystemExit(f"{name}: empty response")
+              data = json.loads(text.splitlines()[-1])
+              if data.get("returnValue") is False:
+                  raise SystemExit(f"{name}: Luna call failed")
+              return data
+
+          activity = load("activity.json")
+          boot = load("boot.json")
+          power = load("power.json")
+          foreground = load("foreground.json")
+
+          uptime_raw = (root / "uptime.txt").read_text().strip().split()[0]
+          uptime = float(uptime_raw)
+
+          requirements = activity.get("requirements")
+          if isinstance(requirements, dict):
+              requirement_names = sorted(str(k) for k in requirements)
+          elif isinstance(requirements, list):
+              requirement_names = sorted(
+                  str(item.get("name", item)) if isinstance(item, dict) else str(item)
+                  for item in requirements
+              )
+          else:
+              requirement_names = []
+
+          activities = activity.get("activities")
+          activity_names = []
+          if isinstance(activities, list):
+              for item in activities:
+                  if isinstance(item, dict):
+                      name = item.get("name") or item.get("activityName")
+                      if name:
+                          activity_names.append(str(name))
+
+          print(f"UPTIME_SECONDS={uptime:.3f}")
+          print("ACTIVITY_MANAGER=PASS")
+          print("ACTIVITY_REQUIREMENTS=" + ",".join(requirement_names))
+          print("SMARTDEMO_ACTIVITY_PRESENT=" + (
+              "yes" if "demo.smartdemokit.launch" in activity_names else "no"
+          ))
+          for key in ("bootStatus", "firstAppLaunched", "returnValue"):
+              if key in boot and isinstance(boot[key], (bool, str, int, float)):
+                  print(f"BOOT_{key.upper()}={boot[key]}")
+          for key in ("state", "processing", "onOff"):
+              if key in power and isinstance(power[key], (bool, str, int, float)):
+                  print(f"POWER_{key.upper()}={power[key]}")
+          app_id = foreground.get("appId")
+          if app_id is not None:
+              print("FOREGROUND_APP=" + str(app_id)[:160])
+          PY
