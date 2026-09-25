@@ -417,16 +417,16 @@ handle_power_state Active
 ''')
         self.assertEqual(self.launches(calls), [])
 
-    def test_quick_start_fast_lane_respects_resume_last_app_setting(self):
+    def test_quick_start_fast_lane_prioritizes_launcher_on_verified_wake(self):
         calls, _ = self.exercise_wake_guard('''
 quick_fast_lane_safe() { return 0; }
-touch "$RESUME_LAST"
+touch "$RESUME_LAST" "$WAKE_SIGNAL"
 echo Active >"$POWER_STATE"
 echo Active >"$DIR/current-power"
 handle_power_state 'Active Standby'
 handle_power_state Active
 ''', resume_last=True)
-        self.assertEqual(self.launches(calls), [])
+        self.assertEqual(self.launches(calls), [server.LAUNCHER_APP_ID])
 
     def test_power_event_takes_precedence_over_foreground_fast_path(self):
         calls, states = self.exercise_wake_guard('''
