@@ -1,0 +1,47 @@
+name: One-shot verify TV guard v0.4.0
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/verify-tv-v040-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 3
+    steps:
+      - name: Verify protected TV state
+        shell: bash
+        run: |
+          set -euo pipefail
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          SOURCE_KEY=/media/lgtv/id_rsa
+          EXPECTED_SHA=52cb0ec94e475d3478916d4af781566e31636bb91042dac1a4218efc043f7e97
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp "$SOURCE_KEY" "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
+          ACTUAL_SHA="$("${SSH[@]}" "sha256sum /var/lib/webosbrew/launcher-home/guard.sh | awk '{print \\$1}'")"
+          echo "TV_GUARD_SHA=$ACTUAL_SHA"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          "${SSH[@]}" "grep -q '# v0.4.0 guard:' /var/lib/webosbrew/launcher-home/guard.sh"
+          "${SSH[@]}" '
+            p=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true)
+            case "$p" in ""|*[!0-9]*) exit 1;; esac
+            kill -0 "$p"
+            tr "\000" " " <"/proc/$p/cmdline" | grep -F "/var/lib/webosbrew/launcher-home/guard.sh" >/dev/null
+            mountpoint -q /var/lib/eim
+            mountpoint -q /var/lib/webosbrew/launcher-eim/frozen-view
+            test -f /var/lib/webosbrew/launcher-eim/last-good
+            test ! -e /var/lib/webosbrew/launcher-eim/boot-pending
+            test ! -e /var/lib/webosbrew/launcher-eim/disabled-failsafe
+          '
+          echo TV_GUARD_V040=PASS
+          echo EIM_OVERLAY_HEALTHY=PASS
