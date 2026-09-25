@@ -1,0 +1,110 @@
+name: Anchor pre-Activity-Manager rollback baseline
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/anchor-live-rollback.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  anchor:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Anchor private checkpoint as rollback baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CHECKPOINT=/media/lgtv/checkpoint-20260925-20260925-092443
+          DEST=/media/lgtv/rollback-20260925-pre-activity-manager
+
+          test -d "$CHECKPOINT"
+
+          if [ -f "$DEST/COMPLETE" ]; then
+            echo "ROLLBACK_BASELINE_ALREADY_COMPLETE=$DEST"
+            exit 0
+          fi
+
+          if [ -e "$DEST" ]; then
+            FAILED="$DEST.incomplete.$(date +%s)"
+            mv "$DEST" "$FAILED"
+            echo "Previous incomplete capture preserved as: $FAILED"
+          fi
+
+          mkdir -p "$DEST/checkpoint-files"
+
+          TV_TAR="$(find "$CHECKPOINT" -type f -name 'tv-current.tar.gz' -print -quit)"
+          CT125_TAR="$(find "$CHECKPOINT" -type f -name 'ct125-current.tar.gz' -print -quit)"
+          SUMMARY="$(find "$CHECKPOINT" -type f -name 'LIVE-STATE-SUMMARY.json' -print -quit)"
+
+          test -n "$TV_TAR"
+          test -n "$CT125_TAR"
+          test -n "$SUMMARY"
+
+          copy_private() {
+            local source="$1"
+            local name="$2"
+            cp -p "$source" "$DEST/checkpoint-files/$name"
+          }
+
+          copy_private "$TV_TAR" tv-current.tar.gz
+          copy_private "$CT125_TAR" ct125-current.tar.gz
+          copy_private "$SUMMARY" LIVE-STATE-SUMMARY.json
+
+          ACTIVITY="$(find "$CHECKPOINT" -type f -path '*/diagnostics/activity-manager.txt' -print -quit)"
+          if [ -n "$ACTIVITY" ]; then
+            copy_private "$ACTIVITY" activity-manager.txt
+          fi
+
+          CT120_TAR="$(find "$CHECKPOINT" -type f -name 'ct120-current.tar.gz' -print -quit)"
+          if [ -n "$CT120_TAR" ]; then
+            copy_private "$CT120_TAR" ct120-current.tar.gz
+          fi
+
+          (
+            cd "$DEST/checkpoint-files"
+            sha256sum * | sort > ../SHA256SUMS.txt
+          )
+
+          cat > "$DEST/BASELINE.txt" <<EOF
+          LGTV rollback baseline
+          ======================
+
+          Purpose: exact pre-Activity-Manager / pre-launcher-latency-experiment restore point.
+          Source checkpoint: $CHECKPOINT
+          Established: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          Important:
+          - The source checkpoint predates all Activity Manager experiments in this GitHub session.
+          - No TV, CT125 or NAS production deployment was performed between that checkpoint and this baseline anchoring.
+          - GitHub-only source/CI changes do not alter this live-state baseline.
+          - Restore only on explicit operator request.
+          - Verify SHA256SUMS.txt before restore.
+          - TV and CT125 archives are private and must never be committed to GitHub.
+          - LIVE-STATE-SUMMARY.json is the authoritative captured service/version state accompanying the archives.
+          EOF
+
+          {
+            echo "source_checkpoint=$CHECKPOINT"
+            echo "github_anchor_sha=$GITHUB_SHA"
+            echo "tv_archive=checkpoint-files/tv-current.tar.gz"
+            echo "ct125_archive=checkpoint-files/ct125-current.tar.gz"
+          } > "$DEST/RESTORE-REFERENCE.txt"
+
+          sha256sum "$DEST/SHA256SUMS.txt" "$DEST/BASELINE.txt" "$DEST/RESTORE-REFERENCE.txt" > "$DEST/MANIFEST-SHA256.txt"
+          printf 'complete\n' > "$DEST/COMPLETE"
+
+          echo "ROLLBACK_BASELINE=$DEST"
+          echo "FILES:"
+          find "$DEST" -maxdepth 2 -type f -printf '%P\n' | sort
+          echo "ROLLBACK_BASELINE=PASS"
