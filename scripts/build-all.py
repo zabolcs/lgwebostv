@@ -146,9 +146,12 @@ def host_config(host: str, app_id: str) -> bytes:
 
 def build(slug: str, config: dict[str, object]) -> tuple[Path, str]:
     source_slug = str(config.get("source", slug))
-    source = ROOT / "apps" / source_slug
-    manifest = str(config.get("manifest", f"{source_slug}/appinfo.json"))
-    appinfo_path = ROOT / "apps" / manifest
+    source = ROOT / str(config["source_dir"]) if "source_dir" in config else ROOT / "apps" / source_slug
+    if "manifest_path" in config:
+        appinfo_path = ROOT / str(config["manifest_path"])
+    else:
+        manifest = str(config.get("manifest", f"{source_slug}/appinfo.json"))
+        appinfo_path = ROOT / "apps" / manifest
     appinfo = json.loads(appinfo_path.read_text(encoding="utf-8"))
     expected_id = str(config["id"])
     app_id = str(appinfo.get("id", ""))
@@ -178,22 +181,43 @@ def build(slug: str, config: dict[str, object]) -> tuple[Path, str]:
             raise ValueError("launcher script entry points changed; update the shared bundle")
         files["index.html"] = files["index.html"].replace(script_tags, b'<script src="launcher-runtime.js"></script>')
 
+    service_files: dict[str, dict[str, bytes]] = {}
+    for service_config in config.get("services", ()):
+        service_id = str(service_config["id"])
+        if not service_id.startswith(app_id + "."):
+            raise ValueError(f"service id must begin with app id for {slug}: {service_id}")
+        service_source = ROOT / str(service_config["source_dir"])
+        collected: dict[str, bytes] = {}
+        for filename in service_config["files"]:
+            filename = str(filename)
+            path = service_source / filename
+            if not path.is_file():
+                raise FileNotFoundError(f"missing service runtime asset: {path}")
+            collected[filename] = path.read_bytes()
+        service_files[service_id] = collected
+
+    package_metadata = {
+        "id": app_id,
+        "package_format_version": 2,
+        "loc_name": app_id,
+        "version": version,
+        "vendor": "Szabolcs",
+        "app": app_id,
+    }
+    if service_files:
+        package_metadata["services"] = list(service_files)
     packageinfo = (
         json.dumps(
-            {
-                "id": app_id,
-                "package_format_version": 2,
-                "loc_name": app_id,
-                "version": version,
-                "vendor": "Szabolcs",
-                "app": app_id,
-            },
+            package_metadata,
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
         + b"\n"
     )
-    installed_size = max(1, (sum(map(len, files.values())) + len(packageinfo) + 1023) // 1024)
+    runtime_size = sum(map(len, files.values())) + sum(
+        len(data) for service in service_files.values() for data in service.values()
+    )
+    installed_size = max(1, (runtime_size + len(packageinfo) + 1023) // 1024)
     control = (
         f"Package: {app_id}\n"
         f"Version: {version}\n"
@@ -209,14 +233,17 @@ def build(slug: str, config: dict[str, object]) -> tuple[Path, str]:
 
     app_root = f"usr/palm/applications/{app_id}"
     package_root = f"usr/palm/packages/{app_id}"
-    directories = (
+    directories = [
         "usr",
         "usr/palm",
         "usr/palm/applications",
         app_root,
         "usr/palm/packages",
         package_root,
-    )
+    ]
+    if service_files:
+        directories.append("usr/palm/services")
+        directories.extend(f"usr/palm/services/{service_id}" for service_id in service_files)
     data_entries: list[tuple[str, bytes | None, int]] = [
         (directory, None, 0o755) for directory in directories
     ]
@@ -224,6 +251,12 @@ def build(slug: str, config: dict[str, object]) -> tuple[Path, str]:
         (f"{app_root}/{filename}", data, 0o644)
         for filename, data in files.items()
     )
+    for service_id, runtime in service_files.items():
+        service_root = f"usr/palm/services/{service_id}"
+        data_entries.extend(
+            (f"{service_root}/{filename}", data, 0o644)
+            for filename, data in runtime.items()
+        )
     data_entries.append((f"{package_root}/packageinfo.json", packageinfo, 0o644))
 
     members = (
