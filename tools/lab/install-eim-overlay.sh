@@ -53,7 +53,7 @@ printf '{"type":"%s","appId":"%s","physicalLastSourceId":"%s","physicalLastSourc
 "${SCP[@]}" "$TMP/lastinput" "$TV:$BASE/runtime.new/lastinput"
 "${SSH[@]}" "chmod 644 '$BASE/runtime.new/lastinput'; rm -rf '$BASE/runtime'; mv '$BASE/runtime.new' '$BASE/runtime'"
 "${SCP[@]}" tools/generated-tv-scripts/launcher-eim-overlay "$TV:$HOOK"
-"${SSH[@]}" "chmod 755 '$HOOK'; sh -n '$HOOK'; touch '$BASE/enabled'; sync"
+"${SSH[@]}" "chmod 755 '$HOOK'; sh -n '$HOOK'; rm -f '$BASE/boot-pending' '$BASE/disabled-failsafe' '$BASE/last-good'; touch '$BASE/enabled'; sync"
 
 echo "OVERLAY_BACKUP=$BACKUP"
 echo EIM_OVERLAY_INSTALLED_NO_REBOOT=PASS
