@@ -52,7 +52,8 @@ stop_guard() {
        tr "\000" " " <"/proc/$p/cmdline" | grep -F "/var/lib/webosbrew/launcher-home/guard.sh" >/dev/null; then
       kill "$p" 2>/dev/null || true
       i=0
-      while [ "$i" -lt 30 ] && kill -0 "$p" 2>/dev/null; do sleep 0.1; i=$((i+1)); done
+      while [ "$i" -lt 30 ] && kill -0 "$p" 2>/dev/null; do /bin/usleep 100000; i=$((i+1)); done
+      ! kill -0 "$p" 2>/dev/null
     fi
   '
 }
