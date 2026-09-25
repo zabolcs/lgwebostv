@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.3.8 guard: Quick Start fast lane with conservative fallback.
+# v0.3.9 guard: direct Quick Start fast lane with conservative fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -166,17 +166,28 @@ quick_fast_lane_safe() {
 quick_start_fast_launch() {
   [ -f "$QUICK_WAKE_ARMED" ] || return 1
   [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
-  [ ! -f "$RESUME_LAST" ] || return 1
-  [ ! -f "$HOME_ACTIVE" ] || return 1
-  quick_fast_lane_safe || return 1
-  [ ! -f "$WAKE_SIGNAL" ] || return 1
-  [ "$(fresh_power)" = Active ] || return 1
+  if [ -f "$HOME_ACTIVE" ]; then
+    diagnostic 'quick fast lane blocked: explicit Home interaction active'
+    return 1
+  fi
+  if ! quick_fast_lane_safe; then
+    diagnostic 'quick fast lane blocked: EIM overlay not healthy'
+    return 1
+  fi
+  # QUICK_WAKE_ARMED is created only by a real native standby state. A fresh
+  # power RPC immediately before dispatch is therefore sufficient here; the
+  # slower conservative path still handles every rejected/late launch.
+  if [ "$(fresh_power)" != Active ]; then
+    diagnostic 'quick fast lane blocked: power not Active'
+    return 1
+  fi
   touch "$QUICK_FAST_ATTEMPT"
   now=$(date +%s)
   echo "$now" >"$LAST_LAUNCH"
   origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
   payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-fast-lane","controlOrigin":"%s","displayPreferences":%s}}' "$APP" "$origin" "$display")
+  diagnostic 'quick fast lane dispatch'
   result=$(luna-send-pub -w 2500 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
   date +%s >"$LAST_LAUNCH"
   if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
@@ -562,7 +573,7 @@ rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.3.8 started'
+diagnostic 'guard v0.3.9 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
