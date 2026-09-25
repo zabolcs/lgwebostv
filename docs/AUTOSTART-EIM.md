@@ -57,20 +57,69 @@ manual-only állapotban maradnak.
 Hiba esetén az EIM device törölhető, az eredeti input (a méréskor HDMI2) visszaállítható,
 és a korábbi guard/SSAP út változatlanul használható.
 
-## Fontos nyitott kérdés: last input tartóssága
+## Végleges startup-architektúra
 
-Az EIM a TV last-input állapotát használja. A sikeres production mérésben reboot előtt
-a launcher volt a kiválasztott EIM input, ezért bootkor elindult. Ha a felhasználó
-később más EIM inputra – például HDMI-re – vált, a `/var/lib/eim/lastinput` ismét
-arra az inputra mutathat.
+A last-input problémát production EIM overlay oldja meg.
 
-A régi `webosbrew-autostart` ezt külön bind-mount/alternatív EIM tárral védte ki.
-Ezt a production launcherhez még nem vezettük be. Mielőtt a régi fallback startup
-út eltávolítható lenne, külön tesztelni kell:
+- A valódi, persistent boot-EIM `/var/lib/eim` alatt a launcher marad a last input.
+- Boot után a Homebrew startup hook egy külön runtime EIM másolatot bind-mountol a
+  `/var/lib/eim` helyére.
+- A runtime EIM normál használat közben szabadon követheti a HDMI1/HDMI2 inputot.
+- A befagyasztott boot-EIM ettől nem változik, ezért a következő teljes boot ismét
+  a launchert választja first appként.
+- A hook bootloop-védett: persistent `boot-pending` markerrel indul, és csak stabil
+  mount után ír `last-good` állapotot. Ha az előző boot nem jut el a megerősítésig,
+  a következő booton az overlay saját magát letiltja, és fail-open módon a normál EIM
+  marad látható.
+- A TV-local guard és a NAS SSAP launcher továbbra is fallback.
 
-1. normál webOS app indítása után megmarad-e a launcher last inputként;
-2. HDMI-re váltás után mi lesz a last input;
-3. Quick Start suspend/resume esetén lefut-e az EIM first-app út;
-4. szükséges-e izolált EIM overlay vagy más, kevésbé invazív re-arm mechanizmus.
+### Végleges cold-boot ellenőrzés
 
-A fallbackeket addig nem szabad eltávolítani.
+GitHub Actions run: `36175082037`.
+
+- reboot uptime-reset: PASS
+- `firstAppId = hu.szabi.launcher`
+- launcher first appként indul
+- runtime overlay felmountolódik
+- frozen boot-EIM: `hu.szabi.launcher`
+- runtime EIM: HDMI2
+- HDMI2 használat nem írja felül a frozen boot-EIM-et
+- launcher visszaindítása nem clobbereli a runtime HDMI állapotot
+- 45 s stabilitás után `last-good` létrejön és `boot-pending` eltűnik
+- `EIM_OVERLAY_COLD_BOOT=PASS`
+
+A tesztben látható launcher → HDMI2 → launcher váltás szándékos volt: a cold-test
+direkt elindította a HDMI2-t, majd a launchert, hogy bizonyítsa az overlay izolációját.
+Normál bootban ez a tesztlépés nincs jelen.
+
+### Quick Start ellenőrzés
+
+GitHub Actions run: `36175896582`.
+
+- standby állapot elérve: PASS
+- wake után a launcher foreground: **14.863 s**
+- uptime nem resetelt
+- boot ID változatlan maradt
+- runtime EIM overlay mount megmaradt
+- frozen boot-EIM továbbra is `hu.szabi.launcher`
+- runtime EIM továbbra is HDMI2
+- a TV-local guard logja igazolja a wake launchot:
+  `source=default-home-guard`
+- `QUICK_START_LAUNCHER_WAKE=PASS`
+
+Ez alapján a launcher mindkét támogatott startup-ágon rendelkezik működő úttal:
+
+```text
+cold boot / reboot / áramtalanítás után
+    -> persistent EIM first-app
+    -> hu.szabi.launcher
+    -> runtime EIM overlay
+
+Quick Start / standby wake
+    -> TV-local guard
+    -> NAS SSAP fallback
+    -> hu.szabi.launcher
+```
+
+A power-cycle és overlay-install workflow-k push eseményen job-szinten le vannak
+tiltva; csak explicit `workflow_dispatch` indíthatja a TV-t érintő műveletet.
