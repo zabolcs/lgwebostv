@@ -1,0 +1,52 @@
+name: Inspect factory smartdemokit Activity Manager launch
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-factory-launch-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Read-only factory activity inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          SOURCE_KEY=/media/lgtv/id_rsa
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+          ssh-keyscan -T 3 "$TV_HOST" >"$KNOWN" 2>/dev/null
+          test -s "$KNOWN"
+          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$TV")
+
+          "${SSH[@]}" true
+          echo TV_SSH=PASS
+
+          echo '=== FACTORY ACTIVITY ID 3 ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":3,\"current\":true,\"internal\":true}' 2>&1" || true
+
+          echo '=== MANAGER INFO ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getManagerInfo' '{}' 2>&1" || true
+
+          echo '=== SMARTDEMOKIT / ACTIVITY MANAGER ROLE REFERENCES ==='
+          "${SSH[@]}" "grep -R -n -E 'demo\.smartdemokit|smartdemokit|activitymanager|applicationmanager/launch|getBootStatus' /usr/share/luna-service2/roles.d /usr/share/luna-service2/client-permissions.d /var/luna-service2/roles.d /var/luna-service2/client-permissions.d 2>/dev/null | head -240 || true"
+
+          echo '=== SMARTDEMOKIT APPINFO/SERVICE REFERENCES ==='
+          "${SSH[@]}" "find /usr/palm /media/cryptofs/apps /media/developer/apps -maxdepth 7 -type f \( -name appinfo.json -o -name services.json -o -name package.json \) 2>/dev/null | while read f; do grep -H -E 'smartdemokit|demo\.smartdemokit' \"$f\" 2>/dev/null || true; done | head -160"
+
+          echo FACTORY_INSPECTION_COMPLETE=PASS
