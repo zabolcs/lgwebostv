@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: normal prewarm first
+# retry: TV SAM alias
 
 jobs:
   probe:
