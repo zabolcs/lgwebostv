@@ -160,6 +160,11 @@ jobs:
           "${SSH[@]}" "echo ---eim-files---; find /var/lib/eim -maxdepth 2 -type f -print 2>/dev/null | sort | head -200"
           "${SSH[@]}" "echo ---launcher-appinfo---; cat /media/developer/apps/usr/palm/applications/hu.szabi.launcher/appinfo.json 2>/dev/null || true"
 
+          echo '=== EIM DEVICE DB / API BASELINE ==='
+          "${SSH[@]}" "echo ---eim_device_db.json---; cat /var/lib/eim/eim_device_db.json 2>/dev/null || true"
+          "${SSH[@]}" "echo ---getLastInput---; luna-send -t 1 -f -w 4000 'luna://com.webos.service.eim/getLastInput' '{}' 2>&1 || true"
+          "${SSH[@]}" "echo ---getTotalDeviceList---; luna-send -t 1 -f -w 4000 'luna://com.webos.service.eim/getTotalDeviceList' '{}' 2>&1 || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
