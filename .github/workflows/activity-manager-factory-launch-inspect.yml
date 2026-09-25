@@ -108,6 +108,13 @@ jobs:
             fi
           done
 
+          echo '=== RAW BOOT-MANAGER ACTIVITY DEFINITIONS ==='
+          for id in 3 4 15
+          do
+            echo "--- RAW_ACTIVITY_ID=$id ---"
+            "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$id,\"current\":false,\"internal\":false}' 2>&1" || true
+          done
+
           echo '=== BOOT MANAGER CURRENT STATUS ==='
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.bootManager/getBootStatus' '{}' 2>&1" || true
 
