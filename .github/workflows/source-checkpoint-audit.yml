@@ -1,0 +1,137 @@
+name: Source checkpoint audit
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/source-checkpoint-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-checkpoint-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify and compare corrected export
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ZIP_PATH=/home/actions/lgtv-import/LGTV-github-source-2026-09-25.zip
+          EXPECTED_ZIP_SHA=1b5ddcafb739f8e1d9900626a353f42209173ed99f8efe6007b4683e638f735e
+          EXPECTED_BROKER_SHA=a2e1ba57a32670a038576f7696da8d29fc09added04a5452a645dbff51397d7c
+
+          test -f "$ZIP_PATH"
+          ACTUAL_ZIP_SHA="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
+          test "$ACTUAL_ZIP_SHA" = "$EXPECTED_ZIP_SHA"
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+
+          python3 - "$ZIP_PATH" "$TMP" <<'PY'
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          archive = Path(sys.argv[1])
+          target = Path(sys.argv[2])
+          with zipfile.ZipFile(archive) as zf:
+              for info in zf.infolist():
+                  name = info.filename.replace("\\", "/")
+                  parts = [p for p in name.split("/") if p not in ("", ".")]
+                  if name.startswith("/") or ".." in parts:
+                      raise SystemExit(f"unsafe zip path: {name}")
+              zf.extractall(target)
+          PY
+
+          SOURCE_ROOT="$TMP/LGTV-github-source-2026-09-25"
+          if [ ! -d "$SOURCE_ROOT" ]; then
+            SOURCE_ROOT="$TMP"
+          fi
+
+          BROKER="$SOURCE_ROOT/remote-broker/remote-broker.c"
+          AUDIT="$SOURCE_ROOT/docs/SOURCE-COMPLETENESS-AUDIT.md"
+          test -f "$BROKER"
+          test -f "$AUDIT"
+
+          ACTUAL_BROKER_SHA="$(sha256sum "$BROKER" | awk '{print $1}')"
+          test "$ACTUAL_BROKER_SHA" = "$EXPECTED_BROKER_SHA"
+
+          python3 - "$SOURCE_ROOT" "$GITHUB_WORKSPACE" <<'PY' | tee /tmp/source-audit.txt
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          src = Path(sys.argv[1]).resolve()
+          repo = Path(sys.argv[2]).resolve()
+
+          ignore_top = {".git", "build", "__pycache__"}
+          repo_only = {
+              ".github/workflows/develop-validation.yml",
+              ".github/workflows/source-checkpoint-audit.yml",
+              "docs/ROADMAP.md",
+          }
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          def tree(root):
+              out = {}
+              for path in root.rglob("*"):
+                  if not path.is_file():
+                      continue
+                  rel = path.relative_to(root).as_posix()
+                  if rel.split("/", 1)[0] in ignore_top:
+                      continue
+                  if "/__pycache__/" in f"/{rel}/" or rel.endswith((".pyc", ".pyo")):
+                      continue
+                  out[rel] = digest(path)
+              return out
+
+          source = tree(src)
+          current = tree(repo)
+
+          added = sorted(set(source) - set(current))
+          changed = sorted(p for p in set(source) & set(current) if source[p] != current[p])
+          current_only = sorted((set(current) - set(source)) - repo_only)
+
+          print(f"SOURCE_FILES={len(source)}")
+          print(f"CURRENT_FILES={len(current)}")
+          print(f"ADD_FROM_EXPORT={len(added)}")
+          print(f"CHANGED_FROM_EXPORT={len(changed)}")
+          print(f"CURRENT_ONLY_UNEXPECTED={len(current_only)}")
+          print("\n[ADD]")
+          print("\n".join(added))
+          print("\n[CHANGED]")
+          print("\n".join(changed))
+          print("\n[CURRENT_ONLY_UNEXPECTED]")
+          print("\n".join(current_only))
+          PY
+
+          {
+            echo "## Corrected source checkpoint audit"
+            echo
+            echo "- ZIP SHA-256: `$ACTUAL_ZIP_SHA` ✅"
+            echo "- remote-broker.c SHA-256: `$ACTUAL_BROKER_SHA` ✅"
+            echo
+            echo '~~~text'
+            cat /tmp/source-audit.txt
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
