@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: memory-reclaim kill before instance capture
+# retry: recover retained instance from TV WAM logs
 
 jobs:
   probe:
