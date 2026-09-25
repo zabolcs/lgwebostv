@@ -2,10 +2,6 @@ name: Controlled bootup Activity Manager reboot test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/activity-manager-bootup-reboot-test.yml'
 
 permissions:
   contents: read
