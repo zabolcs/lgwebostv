@@ -62,6 +62,7 @@ jobs:
           node tests/launcher-popup-park-race.test.js
           node tests/launcher-quick-core.test.js
           node tests/launcher-settings-navigation.test.js
+          node tests/launcher-startup-probe-service.test.js
           node apps/camera-viewer/tests/camera-viewer.test.js
           node apps/camera-viewer/tests/webos-player.test.js
           node apps/media-overlay/tests/media-overlay.test.js
