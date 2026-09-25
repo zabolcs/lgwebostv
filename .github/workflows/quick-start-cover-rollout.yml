@@ -22,43 +22,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare v0.5.0 one-shot acceptance gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path("tools/lab/quick-start-cover-rollout.sh")
-          s=p.read_text()
-          s=s.replace("guard v0.4.0","guard v0.5.0")
-          s=s.replace("if cover > 6.0:","if cover >= 1.80:")
-          s=s.replace(
-              'raise SystemExit(f"cover too slow to hide LG surface: {cover:.3f}s")',
-              'raise SystemExit(f"private WAM Prepare Resume cover not fast enough: {cover:.3f}s")'
-          )
-          s=s.replace(
-              "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick cover accepted'",
-              "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Prepare Resume cover accepted'"
-          )
-          marker='echo COVER_PREWARM=PASS'
-          wait='''WAM_PAYLOAD_READY=0
-for i in $(seq 1 48); do
-  if "${SSH[@]}" "test -s /tmp/hu.szabi.launcher.quick-wam-cover.json"; then
-    WAM_PAYLOAD_READY=1
-    echo "WAM_COVER_PAYLOAD_READY_POLL=$i"
-    break
-  fi
-  sleep 0.25
-done
-test "$WAM_PAYLOAD_READY" -eq 1
-echo WAM_COVER_PAYLOAD_READY=PASS
-echo COVER_PREWARM=PASS'''
-          if marker not in s:
-              raise SystemExit("prewarm marker missing")
-          s=s.replace(marker,wait,1)
-          p.write_text(s)
-          PY
-
       - name: Validate rollout
         shell: bash
         run: |
