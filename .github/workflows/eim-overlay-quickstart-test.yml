@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# one-shot: raw power timeline
+# one-shot: raw power timeline retry
 
 jobs:
   test:
