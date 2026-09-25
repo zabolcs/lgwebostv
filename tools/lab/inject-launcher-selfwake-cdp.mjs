@@ -75,7 +75,21 @@ const statusExpression = String.raw`JSON.stringify({
   resumePaint:window.__launcherResumePaintAt||0
 })`;
 
-const expression = mode === 'status' ? statusExpression : installExpression;
+const releaseExpression = String.raw`(() => {
+  try {
+    var system = window.PalmSystem || window.webOSSystem;
+    if (!system || typeof system.keepAlive !== 'function') {
+      return JSON.stringify({ok:false,error:'keepAlive unavailable'});
+    }
+    system.keepAlive(false);
+    return JSON.stringify({ok:true,hidden:document.hidden,activated:!!system.isActivated});
+  } catch (e) {
+    return JSON.stringify({ok:false,error:String(e && e.message || e)});
+  }
+})()`;
+
+const expression = mode === 'status' ? statusExpression :
+  mode === 'release' ? releaseExpression : installExpression;
 const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((resolve, reject) => {
   const timer = setTimeout(() => { try { ws.close(); } catch {} reject(new Error('CDP timeout')); }, 3000);
