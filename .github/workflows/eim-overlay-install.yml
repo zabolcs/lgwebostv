@@ -1,0 +1,34 @@
+name: Install production EIM overlay
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/eim-overlay-install.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/install-eim-overlay.sh
+          sh -n tools/generated-tv-scripts/launcher-eim-overlay
+
+      - name: Install overlay without reboot
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/install-eim-overlay.sh
