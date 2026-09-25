@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.4.7-probe guard: v0.4.0 behavior with low-overhead wake timing markers.
+# v0.4.0 guard: prewarmed Quick Start cover plus direct full-launch fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -41,7 +41,6 @@ QUICK_APP=hu.szabi.launcher.quick
 CONTROL_ORIGIN="$DIR/control-origin"
 FACTORY_HOME=com.webos.app.home
 DIAGNOSTIC=/tmp/hu.szabi.launcher-wake.log
-TIMING_LOG=/tmp/hu.szabi.launcher-quick-timing.log
 
 [ -f "$ENABLED" ] || exit 0
 # Kernel locks cannot remain stale after a killed process or a PID reuse.
@@ -106,13 +105,6 @@ diagnostic() {
   printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$DIAGNOSTIC"
 }
 
-timing_mark() {
-  # /proc/uptime + shell builtins only, so the probe changes scheduling as
-  # little as practical. /tmp is RAM-backed on this TV.
-  read up _ < /proc/uptime
-  printf '%s %s\n' "$up" "$*" >>"$TIMING_LOG"
-}
-
 fresh_power() {
   line=$(luna-send -n 1 -w 1500 luna://com.webos.service.tvpower/power/getPowerState '{}' 2>/dev/null)
   json_value "$line" state
@@ -174,7 +166,6 @@ quick_fast_lane_safe() {
 }
 
 quick_start_fast_launch() {
-  timing_mark quick-entry
   [ -f "$QUICK_WAKE_ARMED" ] || return 1
   [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
   if [ -f "$HOME_ACTIVE" ]; then
@@ -188,10 +179,7 @@ quick_start_fast_launch() {
   # QUICK_WAKE_ARMED is created only by a real native standby state. A fresh
   # power RPC immediately before dispatch is therefore sufficient here; the
   # slower conservative path still handles every rejected/late launch.
-  timing_mark fresh-power-begin
-  fast_power=$(fresh_power)
-  timing_mark "fresh-power-end state=$fast_power"
-  if [ "$fast_power" != Active ]; then
+  if [ "$(fresh_power)" != Active ]; then
     diagnostic 'quick fast lane blocked: power not Active'
     return 1
   fi
@@ -202,15 +190,11 @@ quick_start_fast_launch() {
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
 
   if [ -f "$QUICK_COVER_READY" ]; then
-    timing_mark list-running-begin
     running=$(luna-send -t 1 -f -w 900 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
-    timing_mark list-running-end
     if echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
       cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
       diagnostic 'quick cover dispatch'
-      timing_mark cover-launch-begin
       cover_result=$(luna-send-pub -w 1200 -t 1 -f luna://com.webos.applicationManager/launch "$cover_payload" 2>&1)
-      timing_mark cover-launch-end
       if echo "$cover_result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
         diagnostic 'quick cover accepted'
       else
@@ -225,9 +209,7 @@ quick_start_fast_launch() {
 
   payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-fast-lane","controlOrigin":"%s","displayPreferences":%s}}' "$APP" "$origin" "$display")
   diagnostic 'quick fast lane dispatch'
-  timing_mark full-launch-begin
   result=$(luna-send-pub -w 2500 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
-  timing_mark full-launch-end
   date +%s >"$LAST_LAUNCH"
   if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
     diagnostic 'quick fast lane accepted'
@@ -546,7 +528,6 @@ power_loop() {
     while IFS= read -r line; do
       state=$(json_value "$line" state)
       [ -n "$state" ] || continue
-      [ "$state" != Active ] || timing_mark power-sub-active
       # Never wait on another Luna call here: Suspend must invalidate a launch
       # even while the single worker is blocked in a foreground/boot query.
       case "$state" in Active|'Screen Saver') ;; *) touch "$WAKE_SIGNAL";; esac
@@ -621,11 +602,11 @@ run_pending_tick() {
 }
 
 # START WORKER (test fixtures source only the functions above).
-rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$TIMING_LOG"
+rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.4.7-probe started'
+diagnostic 'guard v0.4.0 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
