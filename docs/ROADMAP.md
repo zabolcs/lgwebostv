@@ -53,9 +53,21 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 
 - [x] Confirm the public checkpoint contains the launcher, Camera Viewer, Media Overlay, Remote Mapper, CT125 control app, CT120 camera bridge, build/install scripts and regression tests.
 - [x] Confirm `launcher-runtime.js` is generated and is not missing source.
-- [ ] Recover/confirm canonical `remote-broker/` source before any broker development.
+- [x] Make the native broker contract test explicitly SKIP when the canonical broker source is absent; this skip is evidence of incompleteness, not a passing broker validation.
+- [ ] Recover/confirm canonical `remote-broker/` source before any broker development or full-suite release.
 - [ ] Decide whether editable source for Magic Remote overlay and webwrappers should be recovered into the public source repository; current handoff says only deployed copies are preserved privately.
 - [ ] Audit `SOURCE-SHA256SUMS.txt` against the imported source layout.
+
+### P0.4 Baseline parity and reproducibility gate — REQUIRED BEFORE LIVE EXPERIMENTS
+
+- [ ] Get all available-source Python and Node regression suites green on the self-hosted runner.
+- [ ] Produce all six webOS IPKs from GitHub source.
+- [ ] Build twice and prove byte-identical SHA-256 hashes.
+- [ ] Record which tests are skipped because source/material is intentionally absent.
+- [ ] Compare app manifests and documented production versions with the 2026-09-25 handoff.
+- [ ] Classify each production component as **source-complete**, **private-restore-only**, or **missing canonical source**.
+- [ ] Normalize stale pre-GitHub paths so the repository itself is the primary source of truth.
+- [ ] Do not start reboot/power-cycle experiments until this gate is satisfied for the launcher/control path being changed.
 
 ## P1 – Safe CI and development workflow
 
@@ -76,7 +88,16 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 - [ ] Document the GitHub → Actions → self-hosted runner → LAN/TV execution model.
 - [ ] Document release/version rules after the baseline suite has been validated; do not silently couple independent app versions without an explicit decision.
 
-## P3 – Activity Manager cold-boot experiment
+## P3 – Measurement and live-state parity
+
+- [ ] Establish a read-only/manual diagnostics workflow for the self-hosted runner; no deployment or reboot.
+- [ ] Capture current CT125/TV component versions, service state and launcher configuration without changing them.
+- [ ] Compare the live state to GitHub manifests and the 2026-09-25 handoff.
+- [ ] Standardize timestamped measurement output for dispatch, ACK, WAM navigation/paint and Surface Manager visibility.
+- [ ] Keep credentials and exact private restore material outside Git.
+- [ ] Document rollback ownership and the single source of launch responsibility before any boot experiment.
+
+## P4 – Activity Manager cold-boot experiment
 
 Source of truth: `docs/AUTOSTART-ACTIVITYMANAGER-KISERLET.md`.
 
@@ -89,7 +110,7 @@ Source of truth: `docs/AUTOSTART-ACTIVITYMANAGER-KISERLET.md`.
 - [ ] Require at least three successful cold-boot measurements before considering production launcher dispatch.
 - [ ] Preserve the TV-local guard as fallback and prevent duplicate launch ownership.
 
-## P4 – Launcher latency measurement and optimization
+## P5 – Launcher latency measurement and optimization
 
 - [ ] Measure dispatch, ACK, WAM navigation/first paint and native Surface Manager visibility separately.
 - [ ] Measure quick popup first surface without rebuilding the existing popup architecture.
@@ -97,7 +118,7 @@ Source of truth: `docs/AUTOSTART-ACTIVITYMANAGER-KISERLET.md`.
 - [ ] Change one variable per measurement.
 - [ ] Reject optimizations that improve ACK only but not visible surface latency.
 
-## P5 – UI and operational refinements
+## P6 – UI and operational refinements
 
 - [ ] Improve TV settings focus order/categories after boot-path work.
 - [ ] Review CT125 admin UI usability and diagnostics.
@@ -108,13 +129,15 @@ Source of truth: `docs/AUTOSTART-ACTIVITYMANAGER-KISERLET.md`.
 
 A release candidate may move from `develop` toward `master` only when:
 
-1. the safe offline regression suite passes;
-2. deterministic builds pass twice with identical hashes;
-3. source/version manifests are internally consistent;
-4. no private material is present in the Git diff;
-5. all live changes have explicit rollback instructions;
-6. required TV/CT live checks for the changed area have been completed and documented;
-7. safety-critical input/boot paths have not regressed.
+1. the safe offline regression suite passes for all source that is present;
+2. every skipped test is explicitly explained and no skip hides a changed subsystem;
+3. deterministic builds pass twice with identical hashes;
+4. source/version manifests are internally consistent;
+5. the changed subsystem is source-complete in Git; a full-suite release remains blocked while the canonical remote-broker source is missing;
+6. no private material is present in the Git diff;
+7. all live changes have explicit rollback instructions;
+8. required TV/CT live checks for the changed area have been completed and documented;
+9. safety-critical input/boot paths have not regressed.
 
 ## Working rule for AI-assisted changes
 
