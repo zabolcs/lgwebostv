@@ -2,8 +2,6 @@ name: Arm persistent bootup Activity Manager probe
 
 on:
   workflow_dispatch:
-  push:
-    branches: [develop]
 
 permissions:
   contents: read
