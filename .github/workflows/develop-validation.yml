@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: develop-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   offline-validation:
     runs-on: [self-hosted, Linux, X64]
@@ -17,7 +21,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+        with:
+          persist-credentials: false
 
       - name: Tool versions
         shell: bash
