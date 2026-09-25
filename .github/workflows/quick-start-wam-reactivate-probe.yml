@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: precompute WAM payload while Active
+# retry: proven luna timing mode
 
 jobs:
   probe:
