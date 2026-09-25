@@ -1,0 +1,45 @@
+name: Inspect LGTV checkpoint
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-checkpoint:
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Inspect checkpoint archive safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="LGTV-github-source-2026-09-25.zip"
+          test -f "$ZIP"
+          echo "== archive =="
+          ls -lh "$ZIP"
+          echo "== sha256 =="
+          sha256sum "$ZIP"
+          echo "== entries =="
+          unzip -Z1 "$ZIP" | tee /tmp/lgtv-checkpoint-entries.txt
+          echo "== unsafe paths =="
+          if awk 'BEGIN{bad=0} /^\//{print;bad=1} /(^|\/)\.\.($|\/)/{print;bad=1} END{exit bad}' /tmp/lgtv-checkpoint-entries.txt; then
+            echo "No absolute or parent-traversal paths found."
+          else
+            echo "::error::Unsafe archive path detected."
+            exit 1
+          fi
+          echo "== top-level entries =="
+          awk -F/ 'NF{print $1}' /tmp/lgtv-checkpoint-entries.txt | sort -u
+          echo "== nested git metadata =="
+          if grep -E '(^|/)\.git(/|$)' /tmp/lgtv-checkpoint-entries.txt; then
+            echo "::warning::Archive contains nested .git metadata; bootstrap must exclude it."
+          else
+            echo "No nested .git metadata found."
+          fi
