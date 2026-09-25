@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# ACG rerun marker
+
 jobs:
   firstapp-reboot-test:
     runs-on: [self-hosted, Linux, X64]
