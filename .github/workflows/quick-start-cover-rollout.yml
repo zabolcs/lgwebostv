@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# one-shot: v0.4.9 delayed Active cover
+# one-shot: v0.5.0 private-WAM Prepare Resume cover
 
 jobs:
   rollout:
@@ -22,7 +22,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Prepare v0.4.9 one-shot acceptance gate
+      - name: Prepare v0.5.0 one-shot acceptance gate
         shell: bash
         run: |
           set -euo pipefail
@@ -30,17 +30,32 @@ jobs:
           from pathlib import Path
           p=Path("tools/lab/quick-start-cover-rollout.sh")
           s=p.read_text()
-          s=s.replace("guard v0.4.0","guard v0.4.9")
-          s=s.replace("if cover > 6.0:","if cover >= 2.10:")
+          s=s.replace("guard v0.4.0","guard v0.5.0")
+          s=s.replace("if cover > 6.0:","if cover >= 1.80:")
           s=s.replace(
               'raise SystemExit(f"cover too slow to hide LG surface: {cover:.3f}s")',
-              'raise SystemExit(f"450ms Active cover did not beat protected 2.368s baseline enough: {cover:.3f}s")'
+              'raise SystemExit(f"private WAM Prepare Resume cover not fast enough: {cover:.3f}s")'
           )
-          needle='"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q \'quick cover accepted\'"'
-          proof='"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q \'delayed Active cover accepted\'"'
-          if needle not in s:
-              raise SystemExit("guard proof insertion point missing")
-          s=s.replace(needle, proof+"\n"+needle, 1)
+          s=s.replace(
+              "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick cover accepted'",
+              "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Prepare Resume cover accepted'"
+          )
+          marker='echo COVER_PREWARM=PASS'
+          wait='''WAM_PAYLOAD_READY=0
+for i in $(seq 1 48); do
+  if "${SSH[@]}" "test -s /tmp/hu.szabi.launcher.quick-wam-cover.json"; then
+    WAM_PAYLOAD_READY=1
+    echo "WAM_COVER_PAYLOAD_READY_POLL=$i"
+    break
+  fi
+  sleep 0.25
+done
+test "$WAM_PAYLOAD_READY" -eq 1
+echo WAM_COVER_PAYLOAD_READY=PASS
+echo COVER_PREWARM=PASS'''
+          if marker not in s:
+              raise SystemExit("prewarm marker missing")
+          s=s.replace(marker,wait,1)
           p.write_text(s)
           PY
 
@@ -50,7 +65,7 @@ jobs:
           set -euo pipefail
           bash -n tools/lab/quick-start-cover-rollout.sh
           sh -n tools/generated-tv-scripts/guard.sh
-          grep -q "guard v0.4.9" tools/generated-tv-scripts/guard.sh
+          grep -q "guard v0.5.0" tools/generated-tv-scripts/guard.sh
 
       - name: Deploy and measure prewarmed cover
         shell: bash
