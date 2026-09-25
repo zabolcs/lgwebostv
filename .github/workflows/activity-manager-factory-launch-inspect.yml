@@ -190,6 +190,12 @@ jobs:
           "${SSH[@]}" "echo ---overlay-log---; tail -80 /tmp/hu.szabi.launcher-eim-overlay.log 2>/dev/null || true"
           "${SSH[@]}" "echo ---uptime---; cat /proc/uptime"
 
+          echo '=== ACTUAL WEBOSBREW STARTUP CHAIN ==='
+          "${SSH[@]}" "echo ---startup-sh---; sed -n '1,240p' /var/lib/webosbrew/startup.sh 2>/dev/null || true"
+          "${SSH[@]}" "echo ---jumpstart-candidates---; for p in /var/lib/webosbrew/jumpstart.sh /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/startup.sh /media/cryptofs/apps/usr/palm/services/org.webosbrew.hbchannel.service/startup.sh; do if test -f \"\$p\"; then echo ---\$p; grep -n -E 'init\.d|run-parts|webosbrew_startup|failsafe|startup' \"\$p\" | head -120; fi; done"
+          "${SSH[@]}" "echo ---run-parts-test---; if test -d /var/lib/webosbrew/init.d; then run-parts --test /var/lib/webosbrew/init.d 2>&1 || true; ls -la /var/lib/webosbrew/init.d; fi"
+          "${SSH[@]}" "echo ---startup-marker---; stat /tmp/webosbrew_startup 2>/dev/null || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
