@@ -13,6 +13,7 @@ DIR=/var/lib/webosbrew/launcher-home
 APP=hu.szabi.launcher
 OVERLAY=hu.szabi.launcher.overlay
 COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
+COVER_PROCESS=/tmp/hu.szabi.launcher.full-overlay-prewarm-process
 BASE=/var/lib/webosbrew/launcher-eim
 RUN_TAG="${GITHUB_RUN_ID:-manual}"
 BACKUP="/media/lgtv/quick-cover-backup-20260925-${RUN_TAG}"
@@ -75,7 +76,7 @@ start_guard() {
 
 close_overlay() {
   "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.applicationManager/closeByAppId' '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
-  "${SSH[@]}" "rm -f '$COVER_READY' /tmp/hu.szabi.launcher.full-overlay-prewarm-ready /tmp/hu.szabi.launcher.full-overlay-visible" >/dev/null 2>&1 || true
+  "${SSH[@]}" "rm -f '$COVER_READY' '$COVER_PROCESS' /tmp/hu.szabi.launcher.full-overlay-prewarm-ready /tmp/hu.szabi.launcher.full-overlay-visible" >/dev/null 2>&1 || true
 }
 
 restore_old_guard() {
@@ -115,7 +116,8 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.4.0" tools/generated-tv-scripts/guard.sh
+test "$OLD_SHA" = "52cb0ec94e475d3478916d4af781566e31636bb91042dac1a4218efc043f7e97"
+grep -q "guard v0.4.6" tools/generated-tv-scripts/guard.sh
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
 "${SSH[@]}" "sh -n '$GUARD.new'; chmod 755 '$GUARD.new'; mv -f '$GUARD.new' '$GUARD'"
@@ -125,7 +127,7 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.0 started'"
+"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.6 started'"
 echo COVER_GUARD_DEPLOY=PASS
 
 origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
@@ -158,6 +160,16 @@ echo "COVER_PREWARM_CDP=$COVER_CDP"
 test "$READY" -eq 1
 "${SSH[@]}" "touch '$COVER_READY'"
 echo COVER_PREWARM=PASS
+
+# The v0.4.6 guard converts the app-level ready marker into a cached renderer
+# identity while the TV is fully active. This must exist before standby.
+PROOF_READY=0
+for i in $(seq 1 30); do
+  if "${SSH[@]}" "test -s '$COVER_PROCESS'"; then PROOF_READY=1; echo "COVER_PROCESS_PROOF_POLL=$i"; break; fi
+  sleep 0.2
+done
+test "$PROOF_READY" -eq 1
+echo "COVER_PROCESS_PROOF=$("${SSH[@]}" "cat '$COVER_PROCESS'")"
 
 # Establish a worst-case visible input while keeping the prewarmed popup hidden.
 "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.applicationManager/launch' '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"quick-cover-baseline\"}}' >/dev/null 2>&1"
@@ -230,8 +242,8 @@ if cover is None or full is None:
     raise SystemExit("cover/full surface timestamp missing")
 if not (0 <= cover < full):
     raise SystemExit(f"cover was not earlier than full: cover={cover}, full={full}")
-if cover > 6.0:
-    raise SystemExit(f"cover too slow to hide LG surface: {cover:.3f}s")
+if cover >= 2.20:
+    raise SystemExit(f"cached-process cover did not beat protected 2.368s baseline enough: {cover:.3f}s")
 if full-cover < 1.0:
     raise SystemExit(f"cover lead too small: {full-cover:.3f}s")
 print(f"COVER_LEAD_SECONDS={full-cover:.3f}")
