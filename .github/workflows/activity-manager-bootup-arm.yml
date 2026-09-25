@@ -108,16 +108,36 @@ jobs:
           echo "$STATUS" | grep -q '"returnValue":true'
           echo SERVICE_STATUS=PASS
 
-          luna_file arm_bootup "$SERVICE_ID/armBootup" '{"manager":"palm"}'
-          ARM="$(extract_json "$TMP/arm_bootup.txt")"
-          echo "ARM_BOOTUP=$ARM"
-          echo "$ARM" | grep -q '"returnValue":true'
-          ACTIVITY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$ARM")"
-          test -n "$ACTIVITY_ID"
-          echo "BOOTUP_ACTIVITY_ID=$ACTIVITY_ID"
+          EXISTING_ACTIVITY_ID="$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print((((d.get("state") or {}).get("lastBootupArm") or {}).get("activityId")) or "")' "$STATUS")"
+          ACTIVITY_ID=""
+          if [ -n "$EXISTING_ACTIVITY_ID" ]; then
+            echo "BOOTUP_ACTIVITY_CANDIDATE=$EXISTING_ACTIVITY_ID"
+            luna_file existing_activity_details com.palm.activitymanager/getDetails "{\"activityId\":$EXISTING_ACTIVITY_ID,\"current\":false,\"internal\":false}" || true
+            EXISTING_INFO="$(extract_json "$TMP/existing_activity_details.txt" 2>/dev/null || true)"
+            echo "BOOTUP_ACTIVITY_CANDIDATE_DETAILS=$EXISTING_INFO"
+            if echo "$EXISTING_INFO" | grep -q '"returnValue":true' \
+              && echo "$EXISTING_INFO" | grep -q '"bootup"' \
+              && echo "$EXISTING_INFO" | grep -q "$SERVICE_ID/probe"; then
+              ACTIVITY_ID="$EXISTING_ACTIVITY_ID"
+              INFO="$EXISTING_INFO"
+              echo BOOTUP_ACTIVITY_REUSED=YES
+            else
+              echo BOOTUP_ACTIVITY_REUSED=NO
+            fi
+          fi
 
-          luna_file activity_details com.palm.activitymanager/getDetails "{\"activityId\":$ACTIVITY_ID}"
-          INFO="$(extract_json "$TMP/activity_details.txt")"
+          if [ -z "$ACTIVITY_ID" ]; then
+            luna_file arm_bootup "$SERVICE_ID/armBootup" '{"manager":"palm"}'
+            ARM="$(extract_json "$TMP/arm_bootup.txt")"
+            echo "ARM_BOOTUP=$ARM"
+            echo "$ARM" | grep -q '"returnValue":true'
+            ACTIVITY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$ARM")"
+            test -n "$ACTIVITY_ID"
+            luna_file activity_details com.palm.activitymanager/getDetails "{\"activityId\":$ACTIVITY_ID,\"current\":false,\"internal\":false}"
+            INFO="$(extract_json "$TMP/activity_details.txt")"
+          fi
+
+          echo "BOOTUP_ACTIVITY_ID=$ACTIVITY_ID"
           echo "BOOTUP_ACTIVITY_DETAILS=$INFO"
           echo "$INFO" | grep -q '"returnValue":true'
           echo "$INFO" | grep -q '"bootup"'
