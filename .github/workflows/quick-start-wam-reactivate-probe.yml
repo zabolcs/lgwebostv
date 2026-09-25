@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# retry: normal prewarm first
+
 jobs:
   probe:
     runs-on: [self-hosted, Linux, X64]
