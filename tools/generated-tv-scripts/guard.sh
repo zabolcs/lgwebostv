@@ -22,6 +22,7 @@ QUICK_PREWARM_ATTEMPT=/tmp/hu.szabi.launcher.quick-prewarm-attempt
 QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
 QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
+QUICK_COVER_QUEUE=/tmp/hu.szabi.launcher.quick-cover-prewarm-queued
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
@@ -478,11 +479,17 @@ queue_prewarm() {
   [ "$(cat "$POWER_STATE" 2>/dev/null)" = Active ] || return 0
   [ ! -f "$HOME_ACTIVE" ] || return 0
   epoch=$(cat "$ACTIVE_SINCE" 2>/dev/null)
-  if [ -n "$epoch" ] && [ ! -f "$QUICK_COVER_READY" ] &&
-     [ "$(cat /tmp/hu.szabi.launcher.quick-cover-prewarm-attempt 2>/dev/null)" != "$epoch" ] &&
-     [ -x "$DIR/prewarm.sh" ]; then
-    "$DIR/prewarm.sh" cover </dev/null >>/tmp/hu.szabi.launcher-prewarm.log 2>&1 9>&-
-    return 0
+  if [ -n "$epoch" ] && [ ! -f "$QUICK_COVER_READY" ]; then
+    if [ "$(cat "$QUICK_COVER_QUEUE" 2>/dev/null)" = "$epoch" ]; then
+      # The cover preload is still pending (or failed). Do not start another
+      # renderer in parallel during this active epoch.
+      return 0
+    fi
+    if [ -x "$DIR/prewarm.sh" ]; then
+      echo "$epoch" >"$QUICK_COVER_QUEUE"
+      "$DIR/prewarm.sh" cover </dev/null >>/tmp/hu.szabi.launcher-prewarm.log 2>&1 9>&-
+      return 0
+    fi
   fi
   quick_after=$(cat "$QUICK_PREWARM_AFTER" 2>/dev/null); quick_after=${quick_after:-0}
   if [ -n "$epoch" ] && [ "$(cat "$DIR/home-mode" 2>/dev/null)" != full ] &&
