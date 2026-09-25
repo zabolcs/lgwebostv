@@ -13,11 +13,11 @@ chmod 600 "$TMP/id_rsa"
 ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
 SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
 
-"\${SSH[@]}" true
+"${SSH[@]}" true
 
 query() {
   local uri="$1" payload="$2"
-  "\${SSH[@]}" "luna-send -t 1 -f -w 2500 '$uri' '$payload'" 2>&1 || true
+  "${SSH[@]}" "luna-send -t 1 -f -w 2500 '$uri' '$payload'" 2>&1 || true
 }
 
 MANAGER_INFO="$(query luna://com.webos.applicationManager/dev/managerInfo '{}')"
