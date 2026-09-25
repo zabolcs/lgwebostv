@@ -124,6 +124,12 @@ jobs:
           echo '=== EARLY ACTIVITY DEFINITIONS / SOURCES ==='
           "${SSH[@]}" "grep -R -n -E 'adoverlay_wake_up_by_power_on|acr_wake_up_by_power_on|InstantBootComplete|firstAppLaunched|minimal-boot-done|core-boot-done|rest-boot-done' /usr/palm/services /usr/share/luna-service2 /var/luna-service2 2>/dev/null | head -320 || true"
 
+          echo '=== APPLICATION MANAGER / WAM BOOT TIMELINE ==='
+          "${SSH[@]}" "grep -n -i -E 'applicationManager|applicationmanager|webappmanager|WebAppMgr|WAM|SAM|surface.*manager|launch.*app|app.*launch' /var/log/bootd.log /var/log/messages 2>/dev/null | head -360 || true"
+
+          echo '=== BOOTD WINDOW AROUND CORE/MINIMAL/REST ==='
+          "${SSH[@]}" "sed -n '170,370p' /var/log/bootd.log 2>/dev/null || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
