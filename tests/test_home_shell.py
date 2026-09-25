@@ -390,6 +390,44 @@ run_pending_tick
                          'Power alone must wake the worker; consumed events must not spin it')
         self.assertEqual(self.launches(calls), [], 'The two-second wake readiness gate still applies')
 
+    def test_quick_start_fast_lane_dispatches_once_before_boot_ready(self):
+        calls, states = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+echo Active >"$POWER_STATE"
+echo Active >"$DIR/current-power"
+handle_power_state 'Active Standby'
+handle_power_state unknown
+handle_power_state Active
+if [ -f "$QUICK_FAST_ATTEMPT" ]; then echo attempted >>"$DIR/states"; fi
+handle_power_state Active
+''')
+        self.assertEqual(states, ['attempted'])
+        launches = [c for c in calls if c['uri'].endswith('/launch')]
+        self.assertEqual([c['payload']['id'] for c in launches], [server.LAUNCHER_APP_ID])
+        self.assertEqual(launches[0]['payload']['params']['source'], 'quick-start-fast-lane')
+
+    def test_quick_start_fast_lane_ignores_unknown_glitch_and_cold_start(self):
+        calls, _ = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+echo Active >"$DIR/current-power"
+handle_power_state unknown
+handle_power_state Active
+rm -f "$POWER_STATE"
+handle_power_state Active
+''')
+        self.assertEqual(self.launches(calls), [])
+
+    def test_quick_start_fast_lane_respects_resume_last_app_setting(self):
+        calls, _ = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+touch "$RESUME_LAST"
+echo Active >"$POWER_STATE"
+echo Active >"$DIR/current-power"
+handle_power_state 'Active Standby'
+handle_power_state Active
+''', resume_last=True)
+        self.assertEqual(self.launches(calls), [])
+
     def test_power_event_takes_precedence_over_foreground_fast_path(self):
         calls, states = self.exercise_wake_guard('''
 next_poll=2000
