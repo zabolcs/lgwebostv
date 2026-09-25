@@ -10,24 +10,24 @@ on:
 permissions:
   contents: read
 
-# one-shot: measure prewarmed direct WAM from native Active without replacing guard file
+# one-shot: remove only the verified stale overlay renderer left by WAM probes
 
 jobs:
   probe:
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 8
+    timeout-minutes: 6
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Validate probe
+      - name: Validate cleanup
         shell: bash
         run: |
           set -euo pipefail
-          bash -n tools/lab/quick-start-wam-active-sidecar-probe.sh
-      - name: Measure direct WAM from Active
+          bash -n tools/lab/overlay-renderer-cleanup.sh
+      - name: Clean stale overlay renderer
         shell: bash
         run: |
           set -euo pipefail
-          bash tools/lab/quick-start-wam-active-sidecar-probe.sh
+          bash tools/lab/overlay-renderer-cleanup.sh
