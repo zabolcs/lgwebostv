@@ -2086,7 +2086,7 @@ for pid in reversed(ordered):
 """
 
     GUARD_SCRIPT = r"""#!/bin/sh
-# v0.3.9 guard: direct Quick Start fast lane with conservative fallback.
+# v0.4.0 guard: prewarmed Quick Start cover plus direct full-launch fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -2108,6 +2108,7 @@ QUICK_PREWARM_AFTER=/tmp/hu.szabi.launcher.quick-prewarm-after
 QUICK_PREWARM_ATTEMPT=/tmp/hu.szabi.launcher.quick-prewarm-attempt
 QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
+QUICK_COVER_READY=/tmp/hu.szabi.launcher.quick-cover-ready
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
@@ -2234,6 +2235,19 @@ quick_start_fast_launch() {
   echo "$now" >"$LAST_LAUNCH"
   origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
+
+  if [ -f "$QUICK_COVER_READY" ]; then
+    cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
+    diagnostic 'quick cover dispatch'
+    cover_result=$(luna-send-pub -w 1200 -t 1 -f luna://com.webos.applicationManager/launch "$cover_payload" 2>&1)
+    if echo "$cover_result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
+      diagnostic 'quick cover accepted'
+    else
+      rm -f "$QUICK_COVER_READY"
+      diagnostic 'quick cover failed; continuing with full launcher'
+    fi
+  fi
+
   payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-fast-lane","controlOrigin":"%s","displayPreferences":%s}}' "$APP" "$origin" "$display")
   diagnostic 'quick fast lane dispatch'
   result=$(luna-send-pub -w 2500 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
@@ -2623,7 +2637,7 @@ rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.3.9 started'
+diagnostic 'guard v0.4.0 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
