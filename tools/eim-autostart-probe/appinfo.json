@@ -1,0 +1,20 @@
+{
+  "id": "hu.szabi.launcher.eimprobe",
+  "version": "0.0.1",
+  "vendor": "Szabolcs",
+  "type": "web",
+  "main": "index.html",
+  "title": "EIM boot próba",
+  "icon": "icon.png",
+  "largeIcon": "icon-large.png",
+  "splashBackground": "splash-black.png",
+  "transparent": false,
+  "defaultWindowType": "card",
+  "handlesRelaunch": true,
+  "noSplashOnLaunch": true,
+  "spinnerOnLaunch": false,
+  "disableBackHistoryAPI": true,
+  "resolution": "1920x1080",
+  "requiredMemory": 64,
+  "supportGIP": true
+}
