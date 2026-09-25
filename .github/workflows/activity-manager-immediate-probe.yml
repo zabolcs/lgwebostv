@@ -1,0 +1,261 @@
+name: Activity Manager immediate callback probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-immediate-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build, install, probe and remove
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TV_HOST=192.168.0.240
+          SOURCE_KEY=/media/lgtv/id_rsa
+          APP_ID=hu.szabi.launcher.startupprobe
+          SERVICE_ID=hu.szabi.launcher.startupprobe.service
+          VERSION=0.0.2
+
+          test -f "$SOURCE_KEY"
+          python3 tools/lab/build-launcher-startup-probe.py >/tmp/lgtv-startup-probe-build.txt
+          IPK="$GITHUB_WORKSPACE/build/${APP_ID}_${VERSION}_all.ipk"
+          test -f "$IPK"
+          DIGEST="$(sha256sum "$IPK" | awk '{print $1}')"
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+
+          if ! ssh-keyscan -T 3 "$TV_HOST" > "$KNOWN" 2>/dev/null || [ ! -s "$KNOWN" ]; then
+            echo "TV_SSH=UNREACHABLE"
+            echo "LIVE_CHANGES=NONE"
+            exit 0
+          fi
+
+          SSH=(ssh -T
+            -i "$KEY"
+            -o BatchMode=yes
+            -o ConnectTimeout=5
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$KNOWN"
+            root@"$TV_HOST"
+          )
+          SCP=(scp
+            -i "$KEY"
+            -o BatchMode=yes
+            -o ConnectTimeout=5
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$KNOWN"
+          )
+
+          if ! "${SSH[@]}" 'command -v luna-send >/dev/null && command -v luna-send-pub >/dev/null'; then
+            echo "TV_SSH=UNREACHABLE"
+            echo "LIVE_CHANGES=NONE"
+            exit 0
+          fi
+          echo "TV_SSH=PASS"
+
+          luna_file() {
+            local label="$1"
+            local uri="$2"
+            local payload="$3"
+            "${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://$uri' '$payload' 2>&1" \
+              > "$TMP/$label.txt"
+          }
+
+          extract_json() {
+            python3 - "$1" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          decoder = json.JSONDecoder()
+          found = None
+          for line in reversed(text.splitlines()):
+              for index, char in enumerate(line):
+                  if char != "{":
+                      continue
+                  try:
+                      candidate, _ = decoder.raw_decode(line[index:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict):
+                      found = candidate
+                      break
+              if found is not None:
+                  break
+          if found is None:
+              raise SystemExit("no JSON response")
+          print(json.dumps(found, separators=(",", ":")))
+          PY
+          }
+
+          luna_file power com.webos.service.tvpower/power/getPowerState '{}'
+          POWER_JSON="$(extract_json "$TMP/power.txt")"
+          POWER_STATE="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("state",""))' "$POWER_JSON")"
+          if [ "$POWER_STATE" != "Active" ]; then
+            echo "POWER_STATE=$POWER_STATE"
+            echo "LIVE_CHANGES=NONE"
+            exit 0
+          fi
+          echo "POWER_STATE=Active"
+
+          MANIFEST="/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json"
+          SERVICE_META="/media/developer/apps/usr/palm/services/$SERVICE_ID/services.json"
+          if "${SSH[@]}" "test -e '$MANIFEST' || test -e '$SERVICE_META'"; then
+            echo "PROBE_ALREADY_INSTALLED=yes"
+            echo "LIVE_CHANGES=NONE"
+            exit 0
+          fi
+
+          REMOTE_DIR="/tmp/hu.szabi.activity-probe.$$"
+          "${SSH[@]}" "mkdir -p '$REMOTE_DIR'"
+          cleanup_remote() {
+            set +e
+            "${SSH[@]}" "rm -rf '$REMOTE_DIR'" >/dev/null 2>&1 || true
+          }
+          trap 'cleanup_remote; rm -rf "$TMP"' EXIT
+
+          "${SCP[@]}" "$IPK" root@"$TV_HOST":"$REMOTE_DIR/probe.ipk"
+          "${SCP[@]}" scripts/install-local-on-tv.sh root@"$TV_HOST":"$REMOTE_DIR/install.sh"
+
+          "${SSH[@]}" "chmod 700 '$REMOTE_DIR/install.sh' && sh '$REMOTE_DIR/install.sh' '$REMOTE_DIR/probe.ipk' '$DIGEST'" \
+            > "$TMP/install.txt" 2>&1
+          "${SSH[@]}" "test -f '$MANIFEST' && test -f '$SERVICE_META'"
+          echo "PROBE_INSTALL=PASS"
+
+          remove_probe() {
+            set +e
+            "${SSH[@]}" "/usr/bin/luna-send-pub -t 1 -w 30000 -f \
+              'luna://com.webos.appInstallService/dev/remove' \
+              '{\"id\":\"$APP_ID\",\"subscribe\":true}' >/tmp/hu.szabi.activity-probe-remove.log 2>&1" || true
+            i=0
+            while [ "$i" -lt 40 ]; do
+              if "${SSH[@]}" "test ! -e '$MANIFEST' && test ! -e '$SERVICE_META'"; then
+                return 0
+              fi
+              sleep 0.5
+              i=$((i + 1))
+            done
+            return 1
+          }
+
+          LIVE_INSTALLED=1
+          cleanup_all() {
+            rc=$?
+            set +e
+            if [ "${LIVE_INSTALLED:-0}" = 1 ]; then
+              if remove_probe; then
+                echo "PROBE_REMOVE=PASS"
+              else
+                echo "PROBE_REMOVE=FAILED"
+              fi
+            fi
+            cleanup_remote
+            rm -rf "$TMP"
+            exit "$rc"
+          }
+          trap cleanup_all EXIT
+
+          sleep 1
+          luna_file status_before "$SERVICE_ID/status" '{}'
+          STATUS_BEFORE="$(extract_json "$TMP/status_before.txt")"
+          python3 - "$STATUS_BEFORE" <<'PY'
+          import json, sys
+          data = json.loads(sys.argv[1])
+          if data.get("returnValue") is not True:
+              raise SystemExit("probe status unavailable")
+          print("SERVICE_STATUS=PASS")
+          PY
+
+          arm_with_manager() {
+            local manager="$1"
+            luna_file "arm_$manager" "$SERVICE_ID/armImmediate" "{\"manager\":\"$manager\"}"
+            extract_json "$TMP/arm_$manager.txt"
+          }
+
+          ARM_JSON="$(arm_with_manager palm)"
+          ARM_OK="$(python3 -c 'import json,sys; print("yes" if json.loads(sys.argv[1]).get("returnValue") is True else "no")' "$ARM_JSON")"
+          MANAGER=palm
+          if [ "$ARM_OK" != yes ]; then
+            echo "PALM_ACTIVITY_CREATE=REJECTED"
+            ARM_JSON="$(arm_with_manager webos)"
+            ARM_OK="$(python3 -c 'import json,sys; print("yes" if json.loads(sys.argv[1]).get("returnValue") is True else "no")' "$ARM_JSON")"
+            MANAGER=webos
+          fi
+
+          if [ "$ARM_OK" != yes ]; then
+            python3 - "$ARM_JSON" <<'PY'
+          import json, sys
+          data = json.loads(sys.argv[1])
+          print("ACTIVITY_CREATE=REJECTED")
+          if "errorCode" in data:
+              print("ACTIVITY_ERROR_CODE=" + str(data["errorCode"]))
+          if "errorText" in data:
+              print("ACTIVITY_ERROR_TEXT=" + str(data["errorText"])[:180])
+          PY
+            exit 2
+          fi
+
+          echo "ACTIVITY_CREATE=PASS"
+          echo "ACTIVITY_MANAGER_ALIAS=$MANAGER"
+
+          ACTIVITY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$ARM_JSON")"
+          sleep 2
+
+          luna_file status_after "$SERVICE_ID/status" '{}'
+          STATUS_AFTER="$(extract_json "$TMP/status_after.txt")"
+          python3 - "$STATUS_AFTER" <<'PY'
+          import json, sys
+          data = json.loads(sys.argv[1])
+          if data.get("returnValue") is not True:
+              raise SystemExit("probe status unavailable after activity")
+          state = data.get("state") or {}
+          probe = state.get("lastProbe") or {}
+          if probe.get("kind") != "immediate":
+              raise SystemExit("immediate callback was not observed")
+          epoch = probe.get("epochMs")
+          uptime = probe.get("bootUptimeSeconds")
+          if not isinstance(epoch, (int, float)):
+              raise SystemExit("callback epoch missing")
+          if not isinstance(uptime, (int, float)):
+              raise SystemExit("callback uptime missing")
+          print("IMMEDIATE_CALLBACK=PASS")
+          print("CALLBACK_EPOCH_MS=" + str(int(epoch)))
+          print("CALLBACK_BOOT_UPTIME_SECONDS=" + f"{float(uptime):.3f}")
+          PY
+
+          if [ -n "$ACTIVITY_ID" ]; then
+            luna_file cancel "$SERVICE_ID/cancel" "{\"manager\":\"$MANAGER\",\"activityId\":$ACTIVITY_ID}" || true
+          fi
+
+          if remove_probe; then
+            LIVE_INSTALLED=0
+            echo "PROBE_REMOVE=PASS"
+          else
+            echo "PROBE_REMOVE=FAILED"
+            exit 3
+          fi
+
+          echo "NO_REBOOT=PASS"
+          echo "PRODUCTION_LAUNCHER_UNCHANGED=PASS"
