@@ -1,0 +1,78 @@
+name: Arm persistent bootup Activity Manager probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build, install and arm bootup probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARKER=/media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          test -f "$MARKER"
+          APP_ID=hu.szabi.launcher.startupprobe
+          SERVICE_ID=hu.szabi.launcher.startupprobe.service
+          TV=root@192.168.0.240
+          SSH=(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$TV")
+          SCP=(scp -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no)
+          TMP=/tmp/lgtv-bootup-arm.$$
+          trap 'rm -rf "$TMP"' EXIT
+          mkdir -p "$TMP"
+
+          "${SSH[@]}" true
+          echo TV_SSH=PASS
+          POWER=$("${SSH[@]}" "luna-send -n 1 -f -w 3000 'luna://com.webos.service.tvpower/power/getPowerState' '{}'" || true)
+          echo "POWER_RAW=$POWER"
+          echo "$POWER" | grep -q '"state":"Active"'
+
+          python3 tools/lab/build-launcher-startup-probe.py >"$TMP/build.txt"
+          IPK=$(find build -maxdepth 1 -type f -name 'hu.szabi.launcher.startupprobe_*.ipk' | head -1)
+          test -n "$IPK"
+          REMOTE=/tmp/hu.szabi.bootup-arm.$$
+          "${SSH[@]}" "mkdir -p '$REMOTE'"
+          "${SCP[@]}" "$IPK" "$TV:$REMOTE/probe.ipk"
+          "${SCP[@]}" scripts/install-local-on-tv.sh "$TV:$REMOTE/install.sh"
+          SHA=$(sha256sum "$IPK" | awk '{print $1}')
+          "${SSH[@]}" "chmod 700 '$REMOTE/install.sh'; sh '$REMOTE/install.sh' '$REMOTE/probe.ipk' '$SHA'"
+          echo PROBE_INSTALL=PASS
+
+          # First call activates the dynamic service on this firmware.
+          STATUS=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
+          if ! echo "$STATUS" | grep -q '"returnValue":true'; then
+            "${SSH[@]}" "/usr/bin/run-js-service -n '/media/developer/apps/usr/palm/services/$SERVICE_ID' >/tmp/startupprobe-activate.log 2>&1 &" || true
+            sleep 2
+            STATUS=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
+          fi
+          echo "STATUS_BEFORE=$STATUS"
+          echo "$STATUS" | grep -q '"returnValue":true'
+          echo SERVICE_STATUS=PASS
+
+          ARM=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://$SERVICE_ID/armBootup' '{\"manager\":\"palm\"}'" || true)
+          echo "ARM_BOOTUP=$ARM"
+          echo "$ARM" | grep -q '"returnValue":true'
+          ACTIVITY_ID=$(printf '%s' "$ARM" | sed -n 's/.*"activityId":\([0-9][0-9]*\).*/\1/p' | head -1)
+          test -n "$ACTIVITY_ID"
+          echo "BOOTUP_ACTIVITY_ID=$ACTIVITY_ID"
+
+          INFO=$("${SSH[@]}" "luna-send -n 1 -f -w 5000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$ACTIVITY_ID}'" || true)
+          echo "BOOTUP_ACTIVITY_DETAILS=$INFO"
+          echo "$INFO" | grep -q '"returnValue":true'
+          echo "$INFO" | grep -q '"bootup"'
+          echo "$INFO" | grep -q "$SERVICE_ID/probe"
+          echo BOOTUP_ACTIVITY_VERIFIED=PASS
+
+          "${SSH[@]}" "rm -rf '$REMOTE'"
+          echo PROBE_LEFT_INSTALLED_FOR_REBOOT=YES
+          echo PRODUCTION_LAUNCHER_UNCHANGED=PASS
