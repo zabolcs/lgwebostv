@@ -91,6 +91,7 @@ class LauncherPackagingTests(unittest.TestCase):
             full_manifest = json.loads(full[full_root + "appinfo.json"])
             quick_manifest = json.loads(quick[quick_root + "appinfo.json"])
             self.assertEqual((full_manifest["transparent"], full_manifest["defaultWindowType"]), (False, "card"))
+            self.assertTrue(full_manifest["supportGIP"])
             self.assertEqual((quick_manifest["transparent"], quick_manifest["defaultWindowType"]), (True, "popup"))
             self.assertEqual(full_manifest["version"], quick_manifest["version"])
 
