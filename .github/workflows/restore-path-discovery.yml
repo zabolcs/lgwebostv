@@ -37,5 +37,7 @@ jobs:
           fi
           echo "PARAMIKO_TREE_CANDIDATES:"
           find "$ROOT" -type d -name paramiko -path '*/site-packages/*' -printf '%P\n' 2>/dev/null | sort | head -20
+          echo "RUNNER_REMOTE_HELPERS:"
+          find /home/actions /media/lgtv -type f -name remote.py -print 2>/dev/null | sort | head -100
           echo "PVE_CT_REFERENCES:"
           grep -RIlE '192\.168\.0\.120|192\.168\.0\.223|pct (exec|push|pull)|ct125' "$ROOT" 2>/dev/null             | sed "s#^$ROOT/##" | sort | head -200
