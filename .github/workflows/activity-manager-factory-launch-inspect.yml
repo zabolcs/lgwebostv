@@ -11,6 +11,7 @@ permissions:
   contents: read
 
 # trigger: overlay boot log diagnosis
+# trigger: overlay confirm diagnosis
 
 jobs:
   inspect:
