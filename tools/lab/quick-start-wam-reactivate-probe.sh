@@ -16,6 +16,8 @@ chmod 600 "$TMP/id_rsa"
 ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
 SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
 GUARD_STOPPED=0
+WAM_EVENT_FILE=/tmp/hu.szabi.launcher-wam-process-created.log
+WAM_EVENT_PID=/tmp/hu.szabi.launcher-wam-process-created.pid
 
 stop_guard() {
   "${SSH[@]}" '
@@ -45,6 +47,13 @@ start_guard() {
 cleanup() {
   rc=$?
   set +e
+  "${SSH[@]}" '
+    p=$(cat /tmp/hu.szabi.launcher-wam-process-created.pid 2>/dev/null || true)
+    case "$p" in ""|*[!0-9]*) ;;
+      *) kill "$p" 2>/dev/null || true ;;
+    esac
+    rm -f /tmp/hu.szabi.launcher-wam-process-created.pid
+  ' >/dev/null 2>&1 || true
   "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
   if [ "$GUARD_STOPPED" -eq 1 ]; then start_guard >/dev/null 2>&1 || true; fi
   "${SSH[@]}" "luna-send -n 1 -f -w 5000 luna://com.webos.applicationManager/launch '{\"id\":\"$APP\",\"params\":{\"source\":\"wam-reactivate-probe-cleanup\"}}' >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
@@ -56,6 +65,9 @@ trap cleanup EXIT
 "${SSH[@]}" true
 "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
 sleep 1
+"${SSH[@]}" "rm -f '$WAM_EVENT_FILE' '$WAM_EVENT_PID'; nohup luna-send -i luna://com.webos.service.webappmanager/webProcessCreated '{\"subscribe\":true}' >'$WAM_EVENT_FILE' 2>&1 </dev/null & echo \$! >'$WAM_EVENT_PID'"
+sleep 0.3
+echo WAM_PROCESS_SUBSCRIPTION=PASS
 
 origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
 display="$("${SSH[@]}" "cat '$DIR/display-preferences.json' 2>/dev/null")"
@@ -84,10 +96,12 @@ echo PREWARM_READY=PASS
 APPINFO="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
 RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
 PROCESSES="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/getWebProcessSize '{}'" 2>&1)"
+EVENTS="$("${SSH[@]}" "cat '$WAM_EVENT_FILE' 2>/dev/null || true")"
 echo "APPINFO_RAW=$APPINFO"
 echo "RUNNING_RAW=$RUNNING"
 echo "PROCESSES_RAW=$PROCESSES"
-PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$origin" "$display" "$OVERLAY" <<'PY'
+echo "WAM_PROCESS_EVENTS_RAW=$EVENTS"
+PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$EVENTS" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
 def timed_payload(raw):
     marker="payload "
@@ -100,10 +114,26 @@ def timed_payload(raw):
 appinfo=timed_payload(sys.argv[1])
 running=timed_payload(sys.argv[2])
 processes=timed_payload(sys.argv[3])
-origin=sys.argv[4]; display=json.loads(sys.argv[5]); appid=sys.argv[6]
+events_raw=sys.argv[4]
+origin=sys.argv[5]; display=json.loads(sys.argv[6]); appid=sys.argv[7]
 item=next((x for x in running.get("running",[]) if x.get("id")==appid),None)
 instance_id=(item or {}).get("instanceId")
 webprocess_id=(item or {}).get("webprocessid")
+if not instance_id:
+    decoder=json.JSONDecoder()
+    pos=0
+    while pos < len(events_raw):
+        start=events_raw.find("{",pos)
+        if start < 0: break
+        try:
+            event,end=decoder.raw_decode(events_raw[start:])
+            pos=start+end
+        except Exception:
+            pos=start+1
+            continue
+        if event.get("id")==appid and event.get("instanceId"):
+            instance_id=event["instanceId"]
+            webprocess_id=event.get("webprocessid") or webprocess_id
 if not instance_id:
     for proc in processes.get("WebProcesses",[]):
         for app in proc.get("runningApps",[]):
@@ -114,7 +144,7 @@ if not instance_id:
         if instance_id:
             break
 if not instance_id:
-    raise SystemExit("overlay instanceId missing from listRunningApps and getWebProcessSize")
+    raise SystemExit("overlay instanceId missing from WAM webProcessCreated/listRunningApps/getWebProcessSize")
 desc=appinfo.get("appInfo")
 if not isinstance(desc,dict):
     raise SystemExit("overlay appInfo missing")
