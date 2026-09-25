@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# trigger: overlay boot log diagnosis
+
 jobs:
   inspect:
     runs-on: [self-hosted, Linux, X64]
