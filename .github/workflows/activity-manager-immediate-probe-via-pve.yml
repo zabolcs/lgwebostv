@@ -52,11 +52,18 @@ jobs:
           if not helpers:
               raise SystemExit('private remote helper not found')
           helper=helpers[0]
-          spec=importlib.util.spec_from_file_location('private_remote',helper)
-          remote=importlib.util.module_from_spec(spec)
-          sys.path.insert(0,str(helper.parent))
-          assert spec and spec.loader
-          spec.loader.exec_module(remote)
+          # The archived helper prepends its own old vendored Python tree.
+          # Execute it without those sys.path mutations so this job uses the
+          # isolated, pinned Paramiko installed above.
+          import types
+          remote=types.ModuleType('private_remote')
+          remote.__file__=str(helper)
+          source=helper.read_text(encoding='utf-8')
+          source='\\n'.join(
+              line for line in source.splitlines()
+              if not ('sys.path.' in line and ('insert(' in line or 'append(' in line))
+          )
+          exec(compile(source,str(helper),'exec'),remote.__dict__)
 
           def run(c,cmd,timeout=45):
               stdin,stdout,stderr=c.exec_command(cmd,timeout=timeout)
