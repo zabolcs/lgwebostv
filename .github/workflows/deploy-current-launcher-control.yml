@@ -1,0 +1,26 @@
+name: Deploy current launcher control
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-current-launcher-control.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate helper
+        run: python3 -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
+
+      - name: Deploy server only
+        run: python3 tools/lab/deploy-native-launcher.py server.py
