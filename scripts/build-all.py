@@ -116,6 +116,18 @@ DIAGNOSTIC_APPS = {
             },
         ),
     },
+    "eim-autostart-probe": {
+        "id": "hu.szabi.launcher.eimprobe",
+        "source_dir": "tools/launcher-startup-probe",
+        "manifest_path": "tools/eim-autostart-probe/appinfo.json",
+        "files": (
+            "appinfo.json",
+            "index.html",
+            "icon.png",
+            "icon-large.png",
+            "splash-black.png",
+        ),
+    },
 }
 
 
