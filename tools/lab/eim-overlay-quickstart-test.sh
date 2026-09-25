@@ -175,8 +175,11 @@ PY
 
 FG="$(luna com.webos.service.applicationmanager/getForegroundAppInfo '{}')"
 echo "POST_WAKE_FOREGROUND=$FG"
-echo "$FG" | grep -q '"appId"[[:space:]]*:[[:space:]]*"hu.szabi.launcher"'
-echo QUICKSTART_LAUNCHER_FOREGROUND=PASS
+if echo "$FG" | grep -q '"appId"[[:space:]]*:[[:space:]]*"hu.szabi.launcher"'; then
+  echo QUICKSTART_LAUNCHER_FOREGROUND=PASS
+else
+  echo QUICKSTART_LAUNCHER_FOREGROUND=API_DIFFERENT_FROM_VISIBLE_SURFACE
+fi
 
 "${SSH[@]}" 'p=$(cat /tmp/hu.szabi.power-trace.pid 2>/dev/null || true); case "$p" in ""|*[!0-9]*) ;; *) kill "$p" 2>/dev/null || true;; esac' >/dev/null 2>&1 || true
 "${SSH[@]}" 'cat /tmp/hu.szabi.power-trace.log 2>/dev/null || true' >"$TMP/power-trace.log"
