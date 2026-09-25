@@ -81,8 +81,8 @@ echo "PREWARM_CDP=$CDP"
 test "$READY" -eq 1
 echo PREWARM_READY=PASS
 
-APPINFO="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
-RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
+APPINFO="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
+RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
 echo "APPINFO_RAW=$APPINFO"
 echo "RUNNING_RAW=$RUNNING"
 PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$origin" "$display" "$OVERLAY" <<'PY'
