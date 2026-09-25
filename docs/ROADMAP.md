@@ -18,7 +18,7 @@ Reduce the time until the custom launcher is visibly usable after both a cold TV
   - Remote Mapper: 0.2.0
 - Shared launcher source lives under `apps/launcher/`; full, quick and overlay must not fork into separate UI implementations.
 - `launcher-runtime.js` is a build artifact generated in memory by `scripts/build-all.py`; it is intentionally not source-controlled.
-- The handoff describes `remote-broker/` as canonical source. The original 2026-09-25 GitHub export accidentally omitted that directory while excluding the same-named compiled `remote-broker` binary. A follow-up source-completeness audit found the canonical C source intact in the original project/private checkpoint and also found 33 omitted development/diagnostic helper scripts plus seven generated TV-script reference copies. The corrected export contains 237 source files; GitHub replacement/import is still pending.
+- The handoff describes `remote-broker/` as canonical source. The original 2026-09-25 GitHub export accidentally omitted that directory while excluding the same-named compiled `remote-broker` binary. A follow-up source-completeness audit found the canonical C source intact in the original project/private checkpoint and also found 33 omitted development/diagnostic helper scripts plus seven generated TV-script reference copies. The corrected export contains 237 source files and was imported to `develop` in commit `3c38561`; the complete broker contract now runs in CI.
 - Exact live restore material, credentials, compiled production binaries, logs and snapshots remain outside Git.
 
 ## Non-negotiable safety constraints
@@ -89,13 +89,13 @@ Reduce the time until the custom launcher is visibly usable after both a cold TV
 
 ## P1 – Safe CI and development workflow
 
-- [ ] CI must run only offline/read-only validation by default.
-- [ ] Validate Python syntax and unit tests.
-- [ ] Validate Node syntax and unit tests.
+- [x] CI runs offline/read-only validation by default.
+- [x] Validate Python syntax and unit tests.
+- [x] Validate Node syntax and unit tests.
 - [ ] Validate shell syntax for non-destructive scripts.
-- [ ] Build all six webOS IPKs deterministically.
-- [ ] Publish build/test logs and IPK hashes as CI evidence where practical.
-- [ ] Keep deployment, TV access and reboot/power-cycle out of normal push CI.
+- [x] Build all six webOS IPKs deterministically.
+- [x] Publish build/test logs and IPK hashes as CI evidence where practical.
+- [x] Keep deployment, TV access and reboot/power-cycle out of normal push CI.
 - [ ] Add explicit/manual workflows later for LAN diagnostics and deployment, with narrow allowlisted operations and rollback evidence.
 
 ## P2 – Documentation normalization
@@ -129,8 +129,10 @@ The immediate goal is not a generic live-state audit. It is to identify and remo
 
 Source of truth: `docs/AUTOSTART-ACTIVITYMANAGER-KISERLET.md`.
 
+Prepared diagnostic package: `hu.szabi.launcher.startupprobe` 0.0.2 with `hu.szabi.launcher.startupprobe.service`; CI contract coverage: `tests/launcher-startup-probe-service.test.js` plus package-level validation.
+
 - [ ] Read-only Activity Manager capability/ACG inspection.
-- [ ] Timestamp-only callback service; no launcher dispatch.
+- [x] Timestamp-only callback service source and deterministic diagnostic package prepared; no launcher dispatch. Live callback validation is still pending.
 - [ ] Prove one-shot semantics and automatic recovery path.
 - [ ] Compare callback uptime with LG Home, Homebrew guard and root SSH timing.
 - [ ] Only if timing is materially earlier, test the minimal startup probe.
@@ -161,7 +163,7 @@ A release candidate may move from `develop` toward `master` only when:
 2. every skipped test is explicitly explained and no skip hides a changed subsystem;
 3. deterministic builds pass twice with identical hashes;
 4. source/version manifests are internally consistent;
-5. the changed subsystem is source-complete in Git; a full-suite release remains blocked until the corrected export restores and validates the canonical remote-broker source;
+5. the changed subsystem is source-complete in Git; the corrected export has restored and validated the canonical remote-broker source;
 6. no private material is present in the Git diff;
 7. all live changes have explicit rollback instructions;
 8. required TV/CT live checks for the changed area have been completed and documented;
