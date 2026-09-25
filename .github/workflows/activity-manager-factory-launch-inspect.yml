@@ -68,6 +68,46 @@ jobs:
             "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$id,\"current\":true,\"internal\":true}' 2>&1" || true
           done
 
+          echo '=== ALL ACTIVITIES USING BOOT MANAGER / EARLY SIGNALS ==='
+          MANAGER_RAW="$TMP/manager-scan.txt"
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getManagerInfo' '{}' 2>&1" >"$MANAGER_RAW" || true
+          IDS="$(python3 - "$MANAGER_RAW" <<'PY'
+          import json, sys
+          from pathlib import Path
+          text=Path(sys.argv[1]).read_text(encoding="utf-8",errors="replace")
+          dec=json.JSONDecoder()
+          data=None
+          for line in reversed(text.splitlines()):
+              for i,ch in enumerate(line):
+                  if ch!="{":
+                      continue
+                  try:
+                      obj,_=dec.raw_decode(line[i:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(obj,dict) and "queues" in obj:
+                      data=obj
+                      break
+              if data is not None:
+                  break
+          ids=[]
+          for q in (data or {}).get("queues",[]):
+              for a in q.get("activities",[]):
+                  if isinstance(a,dict) and isinstance(a.get("activityId"),int):
+                      ids.append(a["activityId"])
+          print(" ".join(map(str,sorted(set(ids)))))
+          PY
+          )"
+          for id in $IDS
+          do
+            OUT="$TMP/detail-$id.txt"
+            "${SSH[@]}" "luna-send -t 1 -f -w 2500 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$id,\"current\":true,\"internal\":false}' 2>&1" >"$OUT" || true
+            if grep -Eq 'bootManager|getBootStatus|minimal-boot-done|core-boot-done|init-boot-done|rest-boot-done|boot-done|firstAppLaunched' "$OUT"; then
+              echo "--- MATCH_ACTIVITY_ID=$id ---"
+              cat "$OUT"
+            fi
+          done
+
           echo '=== BOOT MANAGER CURRENT STATUS ==='
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.bootManager/getBootStatus' '{}' 2>&1" || true
 
