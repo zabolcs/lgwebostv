@@ -1,0 +1,48 @@
+name: Activity Manager permission diagnostics
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-permission-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect generated LS2 permissions on TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          SOURCE_KEY=/media/lgtv/id_rsa
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          KNOWN="$TMP/known_hosts"
+          cp "$SOURCE_KEY" "$KEY"
+          chmod 600 "$KEY"
+          ssh-keyscan -T 3 "$TV_HOST" >"$KNOWN" 2>/dev/null
+          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$TV")
+
+          echo '=== probe appinfo ==='
+          "${SSH[@]}" "cat /media/developer/apps/usr/palm/applications/hu.szabi.launcher.startupprobe/appinfo.json 2>/dev/null || true"
+
+          echo '=== probe LS2 dev files ==='
+          "${SSH[@]}" "find /var/luna-service2-dev -type f 2>/dev/null | grep -F 'hu.szabi.launcher.startupprobe' | sort | while read f; do echo ---\$f; cat \"\$f\"; done"
+
+          echo '=== boot.query generated references ==='
+          "${SSH[@]}" "grep -R -n -F 'boot.query' /var/luna-service2-dev 2>/dev/null | head -80 || true"
+
+          echo '=== bootManager registrations ==='
+          "${SSH[@]}" "grep -R -n -E 'getBootStatus|boot.query' /usr/share/luna-service2 /var/luna-service2 /usr/palm/services/com.webos.bootManager /usr/palm/services/com.palm.bootManager 2>/dev/null | head -160 || true"
+
+          echo '=== factory smartdemokit activity-related identity references ==='
+          "${SSH[@]}" "grep -R -n -E 'smartdemokit|bootManager' /usr/share/luna-service2/roles.d /usr/share/luna-service2/client-permissions.d /var/luna-service2/roles.d /var/luna-service2/client-permissions.d 2>/dev/null | head -160 || true"
+
+          echo DIAGNOSTICS_COMPLETE=PASS
