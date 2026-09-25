@@ -7,12 +7,30 @@ RUNTIME="$BASE/runtime"
 FROZEN="$BASE/frozen-view"
 LOG=/tmp/hu.szabi.launcher-eim-overlay.log
 APP=hu.szabi.launcher
+PENDING="$BASE/boot-pending"
+LAST_GOOD="$BASE/last-good"
+DISABLED_FAILSAFE="$BASE/disabled-failsafe"
+THIS_BOOT=/tmp/hu.szabi.launcher-eim-overlay-this-boot
+CONFIRM_LOG=/tmp/hu.szabi.launcher-eim-overlay-confirm.log
 
 log() {
   printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >>"$LOG"
 }
 
 [ -f "$ENABLED" ] || exit 0
+
+# A persistent pending marker with no /tmp marker means the previous boot
+# mounted the overlay but never survived long enough to confirm it. Fail open:
+# disable our hook and leave the normal persistent EIM visible.
+if [ -f "$PENDING" ] && [ ! -f "$THIS_BOOT" ]; then
+  log "failsafe: previous overlay boot was not confirmed; disabling overlay"
+  rm -f "$ENABLED"
+  touch "$DISABLED_FAILSAFE"
+  sync
+  exit 8
+fi
+
+touch "$THIS_BOOT"
 [ -f "$RUNTIME/lastinput" ] || { log "runtime lastinput missing"; exit 2; }
 [ -f "$RUNTIME/eim_device_db.json" ] || { log "runtime device db missing"; exit 2; }
 
@@ -25,6 +43,13 @@ if findmnt /var/lib/eim >/dev/null 2>&1; then
 fi
 
 mkdir -p "$FROZEN"
+
+# Mark this boot pending before any mount operation. A delayed verifier removes
+# this only after the overlay has remained healthy for 45 seconds.
+date +%s >"$PENDING.new"
+mv -f "$PENDING.new" "$PENDING"
+rm -f "$DISABLED_FAILSAFE"
+sync
 
 # Keep a read-only view of the real persistent boot EIM for verification and
 # recovery before hiding it under the runtime overlay.
@@ -50,6 +75,29 @@ mount --bind "$RUNTIME" /var/lib/eim || {
 }
 log "runtime overlay mounted"
 
+schedule_confirm() {
+  nohup sh -c '
+    sleep 45
+    BASE=/var/lib/webosbrew/launcher-eim
+    ENABLED="$BASE/enabled"
+    PENDING="$BASE/boot-pending"
+    LAST_GOOD="$BASE/last-good"
+    FROZEN="$BASE/frozen-view"
+    if [ -f "$ENABLED" ] &&
+       mountpoint -q /var/lib/eim &&
+       mountpoint -q "$FROZEN" &&
+       grep -q "\\"appId\\"[[:space:]]*:[[:space:]]*\\"hu.szabi.launcher\\"" "$FROZEN/lastinput"; then
+      date +%s >"$LAST_GOOD.new"
+      mv -f "$LAST_GOOD.new" "$LAST_GOOD"
+      rm -f "$PENDING"
+      sync
+      printf "%s overlay confirmed stable\\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" >>/tmp/hu.szabi.launcher-eim-overlay.log
+    else
+      printf "%s overlay confirmation failed\\n" "$(date "+%Y-%m-%dT%H:%M:%S%z")" >>/tmp/hu.szabi.launcher-eim-overlay.log
+    fi
+  ' </dev/null >"$CONFIRM_LOG" 2>&1 &
+}
+
 # The boot EIM intentionally contains the launcher as a virtual input. After
 # the runtime overlay is active, remove that virtual device from the live EIM
 # so ordinary app/HDMI use cannot rewrite the hidden boot template.
@@ -58,6 +106,7 @@ while [ "$i" -lt 20 ]; do
   result=$(luna-send -t 1 -f -w 1500 luna://com.webos.service.eim/deleteDevice '{"appId":"hu.szabi.launcher"}' 2>&1 || true)
   if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
     log "runtime launcher device removed"
+    schedule_confirm
     exit 0
   fi
   i=$((i + 1))
@@ -67,4 +116,5 @@ done
 # Keep the overlay even if the service was not ready yet. This is fail-safe:
 # the hidden boot EIM remains untouched and the next boot still starts launcher.
 log "runtime launcher device removal deferred/failed"
+schedule_confirm
 exit 0
