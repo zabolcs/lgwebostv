@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# read-only retry: discover retained overlay instanceId from lifecycle events
+# probe legacy LG WAM direct launch without instanceId on private bus
 
 jobs:
   probe:
@@ -25,9 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n tools/lab/quick-start-wam-instance-probe.sh
-      - name: Discover retained overlay instance
+          bash -n tools/lab/quick-start-wam-noinstance-probe.sh
+      - name: Measure direct WAM launch without instanceId
         shell: bash
         run: |
           set -euo pipefail
-          bash tools/lab/quick-start-wam-instance-probe.sh
+          bash tools/lab/quick-start-wam-noinstance-probe.sh
