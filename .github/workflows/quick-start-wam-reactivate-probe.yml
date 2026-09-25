@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: force fresh WAM instance and capture process-created instanceId
+# read-only: discover retained overlay instanceId before any renderer reset
 
 jobs:
   probe:
@@ -25,9 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n tools/lab/quick-start-wam-reactivate-probe.sh
-      - name: Measure direct WAM reactivation
+          bash -n tools/lab/quick-start-wam-instance-probe.sh
+      - name: Discover retained overlay instance
         shell: bash
         run: |
           set -euo pipefail
-          bash tools/lab/quick-start-wam-reactivate-probe.sh
+          bash tools/lab/quick-start-wam-instance-probe.sh
