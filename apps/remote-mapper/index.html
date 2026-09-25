@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Távirányító gombok</title>
+  <link rel="stylesheet" href="remote-ui.css">
+</head>
+<body class="rm-tv-body" style="background:#000">
+  <main class="rm-tv-main">
+    <div id="remote-mapper" class="rm-shell">
+      <header class="rm-header">
+        <div class="rm-title-wrap">
+          <div class="rm-title-icon" aria-hidden="true">⌁</div>
+          <div><h1 class="rm-title">Távirányító gombok</h1><span class="rm-subtitle">Válassz egy gombot a távirányítón, majd állítsd be a működését.</span></div>
+        </div>
+        <div class="rm-header-actions">
+          <span id="rm-hook-state" class="rm-hook-state rm-hook-warning">Remote Broker ellenőrzése…</span>
+          <button id="rm-refresh" class="rm-action rm-secondary" type="button">Frissítés</button>
+          <button id="rm-arm" class="rm-action rm-secondary" type="button">Szerkesztés feloldása</button>
+          <button id="rm-exit" class="rm-action rm-danger" type="button">Bezárás</button>
+        </div>
+      </header>
+      <div class="rm-layout">
+        <section class="rm-visual" aria-label="Vizuális LG távirányító">
+          <p class="rm-visual-hint">Kattints vagy fókuszálj egy gombra.</p>
+          <div id="rm-remote" class="rm-remote"></div>
+        </section>
+        <aside class="rm-editor" aria-label="Kiválasztott gomb beállításai">
+          <header class="rm-editor-head">
+            <div><h3 id="rm-selected-name">Gomb kiválasztása</h3><p id="rm-selected-meta"></p></div>
+            <span id="rm-keycode" class="rm-keycode">KEY —</span>
+          </header>
+          <div id="rm-protected" class="rm-protected" hidden>Ez egy fontos rendszerfunkció. A felületen látható és kiválasztható, de biztonsági okból nem írható át.</div>
+          <div id="rm-home-warning" class="rm-home-warning" hidden>Figyelem: a Home gomb felüldefiniálása elrejtheti a gyári kezdőképernyő gyors elérését. Bármikor visszaállíthatod a „Gyári működés vissza” gombbal.</div>
+          <div id="rm-form" class="rm-form">
+            <div class="rm-form-grid">
+              <div class="rm-current"><strong id="rm-current-title">Eredeti működés</strong><span id="rm-current-detail"></span></div>
+              <label class="rm-field rm-wide">Új működés<select id="rm-action"><option value="original">Eredeti működés</option><option value="launch">Alkalmazás indítása</option><option value="overlayPreset">PiP preset megnyitása</option><option value="cameraOpen">Adott kamera megnyitása</option><option value="appCommand">Egyéni app-parancs (paraméterezett indítás)</option><option value="webhook">Home Assistant webhook meghívása</option><option value="replace">Másik gombként működjön</option><option value="ignore">Gomb letiltása</option><option value="preserve">Meglévő egyedi kötés megtartása</option></select></label>
+              <label id="rm-app-field" class="rm-field rm-wide">Indítandó alkalmazás<select id="rm-app"></select></label>
+              <label id="rm-target-field" class="rm-field rm-wide" hidden>Helyettesítő gomb<select id="rm-target"></select></label>
+              <div class="rm-quick"><button id="rm-quick-overlay" class="rm-action rm-secondary" type="button">Gyorsbeállítás: utolsó PiP</button><button id="rm-quick-camera" class="rm-action rm-secondary" type="button">Gyorsbeállítás: Kamerák</button></div>
+            </div>
+            <div class="rm-actions"><button id="rm-save" class="rm-action" type="button">Kötés mentése</button><button id="rm-original" class="rm-action rm-secondary" type="button">Gyári működés vissza</button></div>
+          </div>
+        </aside>
+      </div>
+      <footer class="rm-footbar"><div id="rm-status" class="rm-status" role="status" aria-live="polite"></div><div class="rm-legend"><span>Aktív kötés</span><span class="rm-legend-lock">Védett gomb</span></div></footer>
+      <div class="rm-actions"><button id="rm-restore-previous" class="rm-action rm-secondary" type="button">Előző mentés visszaállítása</button><button id="rm-restore-original" class="rm-action rm-danger" type="button">Remote Mapper előtti állapot</button></div>
+    </div>
+  </main>
+  <script src="remote-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

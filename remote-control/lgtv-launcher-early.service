@@ -1,0 +1,24 @@
+[Unit]
+Description=LG TV native-network early launcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lgtv-control
+Group=lgtv-control
+ExecStart=/usr/bin/python3 /opt/lgtv-control/launcher_early.py --config /etc/lgtv-control/config.json --credentials /var/lib/lgtv-control/lg-ssap.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lgtv-control
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+UMask=0077
+MemoryMax=48M
+TasksMax=8
+
+[Install]
+WantedBy=multi-user.target

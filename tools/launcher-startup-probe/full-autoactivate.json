@@ -1,0 +1,19 @@
+{
+  "id": "hu.szabi.launcher",
+  "version": "0.3.12",
+  "vendor": "Szabolcs",
+  "type": "web",
+  "main": "index.html",
+  "title": "Saját kezdőképernyő",
+  "icon": "icon.png",
+  "largeIcon": "icon-large.png",
+  "splashBackground": "splash-black.png",
+  "transparent": false,
+  "defaultWindowType": "card",
+  "handlesRelaunch": false,
+  "noSplashOnLaunch": true,
+  "spinnerOnLaunch": false,
+  "disableBackHistoryAPI": true,
+  "resolution": "1920x1080",
+  "requiredMemory": 64
+}

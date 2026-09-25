@@ -1,0 +1,28 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const source = fs.readFileSync(path.join(__dirname, '../apps/launcher/launcher-ui.js'), 'utf8');
+function extract(name, next) { return source.slice(source.indexOf('    function ' + name + '('), source.indexOf('    function ' + next + '(')); }
+const rows = [{}, {}, {}];
+let candidate;
+const root = {contains(node) {return node === candidate;}, querySelectorAll() {return rows;}};
+const document = {activeElement:null};
+const context = {root, document};
+vm.runInNewContext(extract('hasUsableFocus', 'activeScope') + extract('belongsAtPageTop', 'focusNode'), context);
+candidate = {closest() {return null;}, getBoundingClientRect() {throw new Error('Startup must not force layout');}};
+document.activeElement = candidate;
+assert.strictEqual(context.hasUsableFocus(), true);
+candidate.disabled = true;
+assert.strictEqual(context.hasUsableFocus(), false);
+candidate.disabled = false;
+candidate.closest = () => ({});
+assert.strictEqual(context.hasUsableFocus(), false, 'hidden dialogs cannot retain focus');
+document.activeElement = {};
+assert.strictEqual(context.hasUsableFocus(), false);
+candidate.closest = () => null;
+assert.strictEqual(context.belongsAtPageTop(candidate, rows[0]), true);
+assert.strictEqual(context.belongsAtPageTop(candidate, rows[1]), true);
+assert.strictEqual(context.belongsAtPageTop(candidate, rows[2]), false);
+console.log('launcher startup focus tests: PASS');

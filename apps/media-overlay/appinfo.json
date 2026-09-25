@@ -1,0 +1,18 @@
+{
+  "id": "hu.szabi.mediaoverlay",
+  "version": "0.3.7",
+  "vendor": "Szabolcs",
+  "type": "web",
+  "main": "index.html",
+  "title": "Media Overlay",
+  "appDescription": "Transparent text, image and video overlay",
+  "icon": "icon.png",
+  "largeIcon": "icon-large.png",
+  "uiRevision": 2,
+  "transparent": true,
+  "defaultWindowType": "popup",
+  "handlesRelaunch": true,
+  "noSplashOnLaunch": true,
+  "spinnerOnLaunch": false,
+  "disableBackHistoryAPI": true
+}

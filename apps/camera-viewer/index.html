@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Kamerák</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <video id="screen-guard" class="screen-guard" loop muted playsinline aria-hidden="true"></video>
+  <main id="app" class="app-shell">
+    <section id="grid-screen" class="screen grid-screen" aria-label="Kamerák">
+      <header class="topbar">
+        <div class="app-title">
+          <img src="icon.png" alt="" aria-hidden="true">
+          <span>Kamerák</span>
+        </div>
+        <div class="topbar-tools">
+          <nav id="page-controls" class="page-controls hidden" aria-label="Kameraoldalak">
+            <button id="page-previous" type="button">‹ Előző</button>
+            <span id="page-indicator">1 / 1</span>
+            <button id="page-next" type="button">Következő ›</button>
+          </nav>
+          <button id="settings-button" class="action-button" type="button" aria-label="Beállítások" title="Beállítások">
+            <span class="button-icon" aria-hidden="true">⚙</span>
+          </button>
+        </div>
+      </header>
+
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+      <div id="camera-grid" class="camera-grid" aria-label="Kamerák"></div>
+      <div id="empty-state" class="empty-state hidden">
+        <span class="empty-icon" aria-hidden="true">◎</span>
+        <h2>Még nincs kamera</h2>
+        <p>Adj hozzá egy helyi go2rtc kamera-profilt.</p>
+        <button id="empty-settings-button" class="primary-button" type="button">Kamera hozzáadása</button>
+      </div>
+    </section>
+
+    <section id="viewer-screen" class="screen viewer-screen hidden" tabindex="-1" aria-label="Kamera teljes nézet">
+      <div id="viewer-stage" class="viewer-stage"></div>
+      <div class="viewer-topbar">
+        <div class="viewer-heading">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="viewer-title"></span>
+          <span id="viewer-transport" class="transport-badge"></span>
+        </div>
+        <div class="viewer-actions">
+          <button id="viewer-audio" class="viewer-audio hidden" type="button" aria-label="Kamera hangjának be- vagy kikapcsolása">🔇 Hang</button>
+          <button id="viewer-close" class="viewer-close" type="button" aria-label="Vissza a kamerarácshoz">×</button>
+        </div>
+      </div>
+      <div id="viewer-status" class="viewer-status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="settings-panel" class="settings-panel hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="settings-card">
+        <header class="settings-header">
+          <div>
+            <span class="eyebrow">Camera Viewer 0.3.11 · popup overlay</span>
+            <h2 id="settings-title">Kamera beállítások</h2>
+          </div>
+          <button id="settings-close" class="icon-button" type="button" aria-label="Beállítások bezárása">×</button>
+        </header>
+
+        <div class="profile-toolbar">
+          <label for="profile-select">Profil</label>
+          <select id="profile-select"></select>
+          <button id="new-profile" type="button">Új</button>
+          <button id="delete-profile" class="danger-button" type="button">Törlés</button>
+        </div>
+
+        <form id="settings-form" class="settings-form" novalidate>
+          <div class="settings-scroll">
+            <section class="form-section" aria-labelledby="layout-title">
+              <div class="section-heading">
+                <span class="section-number">1</span>
+                <div>
+                  <h3 id="layout-title">Rács és működés</h3>
+                  <span class="section-hint">Oldalméret, kiemelt kamera és képernyőkímélő-védelem</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label><span>Layout</span><select id="layout-size"><option value="2">2 × 2</option><option value="3">3 × 3</option><option value="4">4 × 4</option></select></label>
+                <label><span>Kiemelt kamera</span><select id="featured-camera"><option value="">Nincs</option></select></label>
+                <label><span>Előnézet frissítése (másodperc)</span><input id="preview-interval-seconds" type="number" min="1" max="60" step="1" value="5"></label>
+                <label class="check-label"><input id="prevent-screensaver" type="checkbox"><span>Ne induljon el a képernyőkímélő az app futása közben</span></label>
+                <button id="save-view-settings" class="secondary-button" type="button">Layout-beállítások mentése</button>
+              </div>
+            </section>
+
+            <section class="form-section" aria-labelledby="identity-title">
+              <div class="section-heading">
+                <span class="section-number">2</span>
+                <div>
+                  <h3 id="identity-title">Kamera</h3>
+                  <span class="section-hint">Megjelenés és Home Assistant launch-azonosító</span>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label>
+                  <span>Megjelenő név</span>
+                  <input id="profile-name" name="name" type="text" maxlength="48" autocomplete="off" required>
+                </label>
+                <label>
+                  <span>Kamera ID</span>
+                  <input id="camera-id" name="cameraId" type="text" maxlength="32" autocomplete="off" placeholder="kapu" required>
+                </label>
+                <label>
+                  <span>Elsődleges WebRTC forrás</span>
+                  <input id="primary-source" name="primarySource" type="text" maxlength="48" autocomplete="off" placeholder="camera_kapu_h264" required>
+                </label>
+                <label>
+                  <span>Előnézet / fallback forrás</span>
+                  <input id="preview-source" name="previewSource" type="text" maxlength="48" autocomplete="off" placeholder="camera_kapu_preview" required>
+                </label>
+                <label class="check-label"><input id="camera-audio" name="audio" type="checkbox"><span>WebRTC-hang kérése ennél a kameránál</span></label>
+              </div>
+            </section>
+
+            <section class="form-section" aria-labelledby="gateway-title">
+              <div class="section-heading">
+                <span class="section-number">3</span>
+                <div>
+                  <h3 id="gateway-title">Helyi gateway</h3>
+                  <span class="section-hint">A média és a same-origin WebRTC player külön porton fut</span>
+                </div>
+              </div>
+              <div class="gateway-grid">
+                <label>
+                  <span>Séma</span>
+                  <select id="stream-scheme" name="scheme">
+                    <option value="http">HTTP</option>
+                    <option value="https">HTTPS</option>
+                  </select>
+                </label>
+                <label class="host-field">
+                  <span>Host</span>
+                  <input id="stream-host" name="host" type="text" maxlength="15" inputmode="decimal" autocomplete="off" placeholder="Privát IPv4-cím" required>
+                </label>
+                <label>
+                  <span>Média port</span>
+                  <input id="stream-port" name="port" type="number" min="1" max="65535" value="1984" required>
+                </label>
+                <label>
+                  <span>Player port</span>
+                  <input id="player-port" name="playerPort" type="number" min="1" max="65535" value="1985" required>
+                </label>
+                <label class="player-path-field">
+                  <span>Hosted player path</span>
+                  <input id="player-path" name="playerPath" type="text" maxlength="192" autocomplete="off" value="/webos-player.html" placeholder="/webos-player.html">
+                </label>
+              </div>
+              <p class="security-note">
+                A player a saját originjén kapcsolódik a go2rtc WebSockethez. Origin wildcard, kamera-jelszó és token nem kerül az appba.
+              </p>
+            </section>
+          </div>
+
+          <footer class="form-footer">
+            <div id="settings-error" class="form-error" role="alert"></div>
+            <div class="form-actions">
+              <button id="cancel-settings" type="button">Mégse</button>
+              <button class="primary-button" type="submit">Mentés</button>
+            </div>
+          </footer>
+        </form>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>webOS go2rtc player</title>
+  <style>
+    html, body, video {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    video {
+      display: block;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay muted playsinline></video>
+  <script src="/webos-player.js"></script>
+</body>
+</html>

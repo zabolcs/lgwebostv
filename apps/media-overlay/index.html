@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Media Overlay</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body tabindex="-1">
+  <main id="overlay" class="corner-top-left" hidden>
+    <div id="overlay-frame">
+      <div id="media-host" aria-live="polite"></div>
+      <div id="overlay-status" class="status-card">Betöltés…</div>
+      <nav id="overlay-controls" aria-label="Overlay vezérlés">
+        <button id="fullscreen-button" type="button" aria-label="Teljes képernyő">⛶</button>
+        <button id="close-button" type="button" aria-label="Bezárás">×</button>
+      </nav>
+    </div>
+  </main>
+
+  <section id="settings">
+    <div class="settings-panel">
+      <header>
+        <h1>Media Overlay</h1>
+        <button id="settings-close-button" type="button">Bezárás</button>
+      </header>
+
+      <div class="settings-grid">
+        <label>Sarok
+          <select id="corner">
+            <option value="top-left">Bal felső</option>
+            <option value="top-right">Jobb felső</option>
+            <option value="bottom-left">Bal alsó</option>
+            <option value="bottom-right">Jobb alsó</option>
+          </select>
+        </label>
+        <label>Szélesség (px)<input id="width" type="number" min="240" max="1920" step="10"></label>
+        <label>Magasság (px)<input id="height" type="number" min="135" max="1080" step="10"></label>
+        <label>Vízszintes margó (px)<input id="margin-x" type="number" min="0" max="400" step="5"></label>
+        <label>Függőleges margó (px)<input id="margin-y" type="number" min="0" max="300" step="5"></label>
+        <label>Alap TTL (másodperc, 0 = kézi)<input id="ttl-seconds" type="number" min="0" max="3600" step="1"></label>
+      </div>
+      <button id="save-layout-button" type="button">Elrendezés mentése</button>
+
+      <hr>
+      <h2>Presetek</h2>
+      <div class="preset-row">
+        <label>Preset
+          <select id="preset-list"></select>
+        </label>
+        <button id="new-preset-button" type="button">Új</button>
+        <button id="delete-preset-button" type="button">Törlés</button>
+      </div>
+      <div class="settings-grid preset-editor">
+        <label>Azonosító<input id="preset-id" type="text" maxlength="32" autocomplete="off" spellcheck="false"></label>
+        <label>Típus
+          <select id="preset-kind">
+            <option value="text">Szöveg</option>
+            <option value="image">Kép</option>
+            <option value="video">Videó</option>
+          </select>
+        </label>
+        <label>Illesztés
+          <select id="preset-fit">
+            <option value="contain">Contain</option>
+            <option value="cover">Cover</option>
+          </select>
+        </label>
+        <label>Kattintási művelet
+          <select id="preset-click-action">
+            <option value="">Nincs</option>
+            <option value="openCamera">Kamera megnyitása</option>
+            <option value="dismiss">Vezérlők nélkül, kattintásra bezárás</option>
+          </select>
+        </label>
+        <label>Kamera-ID<input id="preset-camera-id" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="front"></label>
+      </div>
+      <label id="content-label" class="content-label">Tartalom
+        <textarea id="preset-content" maxlength="2048" rows="4" spellcheck="false"></textarea>
+      </label>
+      <div class="action-row">
+        <button id="save-preset-button" type="button">Preset mentése</button>
+        <button id="show-preset-button" type="button">Megjelenítés</button>
+      </div>
+      <p id="settings-status" role="status"></p>
+      <p class="hint">Képhez és videóhoz csak HTTP/HTTPS, privát IPv4-cím használható. A 192.168.0.100 cím mindig tiltott. Home Assistantból presetId vagy közvetlen kind + url, továbbá sarok, méret, margó és TTL is átadható. Bezárás: action=dismiss.</p>
+    </div>
+  </section>
+
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "id": "hu.szabi.launcher.quick",
+  "version": "0.3.11",
+  "vendor": "Szabolcs",
+  "type": "web",
+  "main": "index.html",
+  "title": "Saját gyorsmenü",
+  "icon": "icon.png",
+  "largeIcon": "icon-large.png",
+  "splashBackground": "splash-black.png",
+  "transparent": true,
+  "defaultWindowType": "popup",
+  "handlesRelaunch": true,
+  "noSplashOnLaunch": true,
+  "spinnerOnLaunch": false,
+  "disableBackHistoryAPI": true,
+  "resolution": "1920x1080",
+  "requiredMemory": 40
+}

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, initial-scale=1">
+<title>Launcher indulási próba</title>
+<script>window.__launcherStartAt = Date.now();</script>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#101820;color:#fff;font:32px Arial,sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+main{text-align:center}h1{font-size:54px;font-weight:400;margin:0 0 32px}
+p{color:#b7c4d1;margin:28px 0;font-size:27px}
+button{width:440px;height:210px;margin:12px;border:6px solid transparent;border-radius:16px;background:#20384c;color:#fff;font:38px Arial,sans-serif;outline:none}
+button:focus{border-color:#fff;background:#365e7e}#status{height:40px}body.parked main{visibility:hidden}
+</style>
+</head>
+<body>
+<main>
+<h1>Minimális launcher – indulási próba</h1>
+<div><button id="youtube">YouTube</button><button id="full">Teljes launcher</button></div>
+<p>Bal / jobb: választás · OK: indítás · Vissza: bezárás</p>
+<p id="status" role="status">Helyi fájlokból, hálózati adatbetöltés nélkül.</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var buttons = [document.getElementById('youtube'), document.getElementById('full')];
+  var status = document.getElementById('status');
+  var selected = 0, bridges = [], lastRequestId = '';
+  function envelope(raw) {
+    try {
+      var result = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      for (var depth = 0; result && typeof result === 'object' && depth < 6; depth += 1) {
+        if (result.launchParams !== undefined) result = result.launchParams;
+        else if (result.parameters !== undefined) result = result.parameters;
+        else if (result.payload && result.payload.params) result = result.payload;
+        else if (result.params) result = result.params;
+        else break;
+        if (typeof result === 'string') result = JSON.parse(result);
+      }
+      return result && typeof result === 'object' ? result : {};
+    } catch (ignore) { return {}; }
+  }
+  function params() {
+    return envelope(window.PalmSystem && window.PalmSystem.launchParams ||
+      window.webOSSystem && window.webOSSystem.launchParams);
+  }
+  var parked = params().source === 'preload';
+  function paint(name) {
+    if (!window.requestAnimationFrame) return;
+    window.requestAnimationFrame(function () {
+      window.requestAnimationFrame(function () { window[name] = Date.now(); });
+    });
+  }
+  function select(index) {
+    selected = Math.max(0, Math.min(buttons.length - 1, index));
+    buttons[selected].focus();
+  }
+  function show() {
+    parked = false;
+    document.body.classList.remove('parked');
+    select(selected);
+  }
+  function activate() {
+    try {
+      var system = window.PalmSystem || window.webOSSystem;
+      if (system && (document.hidden || system.isActivated !== true) && typeof system.activate === 'function') system.activate();
+    } catch (ignore) {}
+  }
+  function launch(id) {
+    if (parked) return;
+    if (typeof window.PalmServiceBridge !== 'function') {
+      status.textContent = 'Ez az indítási próba LG webOS TV-n használható.';
+      return;
+    }
+    var bridge = new window.PalmServiceBridge();
+    bridges.push(bridge);
+    bridge.onservicecallback = function (message) {
+      var result = envelope(message);
+      if (result.returnValue === false) status.textContent = 'Az alkalmazás indítása sikertelen.';
+      var position = bridges.indexOf(bridge);
+      if (position >= 0) bridges.splice(position, 1);
+    };
+    try {
+      bridge.call('luna://com.webos.applicationManager/launch', JSON.stringify({id: id, params: {source: 'startup-probe'}}));
+    } catch (ignore) {
+      var position = bridges.indexOf(bridge);
+      if (position >= 0) bridges.splice(position, 1);
+      status.textContent = 'Az alkalmazás indítása sikertelen.';
+    }
+  }
+  buttons[0].addEventListener('click', function () { launch('youtube.leanback.v4'); });
+  buttons[1].addEventListener('click', function () { launch('hu.szabi.launcher'); });
+  document.addEventListener('keydown', function (event) {
+    if (parked) return;
+    var code = event.keyCode;
+    if (code === 37 || code === 38) select(selected - 1);
+    else if (code === 39 || code === 40) select(selected + 1);
+    else if (code === 13) { if (!event.repeat) buttons[selected].click(); }
+    else if (code === 461 || code === 27) {
+      try {
+        if (window.PalmSystem && typeof window.PalmSystem.close === 'function') window.PalmSystem.close();
+        else window.close();
+      } catch (ignore) { window.close(); }
+    } else return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+  function resume(event) {
+    var next = event ? envelope(event.detail) : params();
+    if (next.source === 'preload') {
+      parked = true;
+      document.body.classList.add('parked');
+      return;
+    }
+    var requestId = String(next.homeRequestId || '');
+    if (requestId && requestId === lastRequestId) return;
+    lastRequestId = requestId;
+    show();
+    if (event) activate();
+    window.__launcherResumeAt = Date.now();
+    paint('__launcherResumePaintAt');
+  }
+  document.addEventListener('webOSRelaunch', resume, true);
+  document.addEventListener('webOSLaunch', resume, true);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && !parked) {
+      window.__launcherResumeAt = Date.now();
+      paint('__launcherResumePaintAt');
+      select(selected);
+    }
+  });
+  if (parked) document.body.classList.add('parked');
+  else select(0);
+  window.__launcherReadyAt = Date.now();
+  paint('__launcherFirstPaintAt');
+}());
+</script>
+</body>
+</html>

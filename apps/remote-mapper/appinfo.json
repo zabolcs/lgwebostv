@@ -1,0 +1,14 @@
+{
+  "id": "hu.szabi.remotemapper",
+  "version": "0.2.0",
+  "vendor": "Szabolcs",
+  "type": "web",
+  "main": "index.html",
+  "title": "Távirányító gombok",
+  "icon": "icon.png",
+  "largeIcon": "icon-large.png",
+  "splashBackground": "splash-black.png",
+  "spinnerOnLaunch": false,
+  "transparent": false,
+  "disableBackHistoryAPI": true
+}

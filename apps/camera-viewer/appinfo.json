@@ -1,0 +1,17 @@
+{
+  "id": "hu.szabi.cameraviewer",
+  "version": "0.3.11",
+  "vendor": "Szabolcs",
+  "type": "web",
+  "main": "index.html",
+  "title": "Kamerák",
+  "icon": "icon.png",
+  "largeIcon": "icon-large.png",
+  "appDescription": "Full-screen camera viewer in a popup overlay",
+  "spinnerOnLaunch": false,
+  "transparent": true,
+  "defaultWindowType": "popup",
+  "noSplashOnLaunch": true,
+  "handlesRelaunch": true,
+  "disableBackHistoryAPI": true
+}

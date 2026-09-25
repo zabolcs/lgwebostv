@@ -1,0 +1,37 @@
+[Unit]
+Description=Restricted same-origin player bridge for LG webOS Camera Viewer
+After=network-online.target go2rtc.service
+Wants=network-online.target
+Wants=go2rtc.service
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+WorkingDirectory=/opt/go2rtc-tv-player
+Environment=PLAYER_BIND_HOST=192.168.0.150
+Environment=PLAYER_BIND_PORT=1985
+Environment=PLAYER_ALLOWED_CLIENT=192.168.0.240
+Environment=PLAYER_PUBLIC_HOST=192.168.0.150:1985
+Environment=GO2RTC_HOST=127.0.0.1
+Environment=GO2RTC_PORT=1984
+ExecStart=/usr/bin/python3 /opt/go2rtc-tv-player/server.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

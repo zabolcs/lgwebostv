@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Launcher quick preview</title>
+  <link rel="stylesheet" href="../apps/launcher/launcher.css?v=0.1.36">
+  <style>html,body{margin:0;min-height:100%;background:linear-gradient(135deg,#49606f,#172630)}</style>
+</head>
+<body class="launcher-tv-body launcher-quick-mode">
+  <main id="launcher-root"></main>
+  <script src="../apps/launcher/launcher-quick-core.js"></script>
+  <script src="../apps/launcher/launcher-ui.js"></script>
+  <script>
+  (function () {
+    var apps = [
+      {id:'cdp-30',title:'Plex'}, {id:'youtube.leanback.v4',title:'YouTube'},
+      {id:'netflix',title:'Netflix'}, {id:'com.webos.app.livetv',title:'Live TV'},
+      {id:'com.webos.app.hdmi1',title:'HDMI 1'}, {id:'com.webos.app.hdmi2',title:'HDMI 2'},
+      {id:'com.webos.app.hdmi3',title:'HDMI 3'}, {id:'com.webos.app.browser',title:'Böngésző'},
+      {id:'spotify-beehive',title:'Spotify'}, {id:'com.webos.app.settings',title:'Beállítások'}
+    ];
+    var state = {
+      ok:true,
+      apps:apps,
+      presets:[
+        {id:'gyerekszoba',kind:'image',previewAvailable:true,previewUrl:'http://192.168.0.150/api/frame.jpeg?src=gyerekszoba'},
+        {id:'kapu',kind:'image',previewAvailable:true,previewUrl:'http://192.168.0.150/api/frame.jpeg?src=kapu'},
+        {id:'udvar',kind:'image',previewAvailable:true,previewUrl:'http://192.168.0.150/api/frame.jpeg?src=udvar'}
+      ],
+      config:{
+        settings:{bootOverlayEnabled:false,animationsEnabled:true,wallpaperEnabled:true,wallpaperIntervalMinutes:5,wallpaperDimPercent:42,wallpaperUrls:['data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="9"%3E%3Crect width="16" height="9" fill="%231a4665"/%3E%3C/svg%3E','data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="16" height="9"%3E%3Crect width="16" height="9" fill="%23451f5f"/%3E%3C/svg%3E'],weatherEnabled:true,cameraPreviewsEnabled:true,focusScalePercent:10,editorModeEnabled:false},
+        lastUsed:{type:'app',targetId:'cdp-30',label:'Plex'},
+        rows:[
+          {id:'favorites',title:'Kedvencek',visible:true,items:[
+            {id:'plex',type:'app',targetId:'cdp-30',label:'Plex',visible:true,iconKey:'plex'},
+            {id:'youtube',type:'app',targetId:'youtube.leanback.v4',label:'YouTube',visible:true,iconKey:'youtube'},
+            {id:'netflix',type:'app',targetId:'netflix',label:'Netflix',visible:true,iconKey:'netflix'}
+          ]},
+          {id:'apps',title:'Alkalmazások',visible:true,items:[
+            {id:'spotify',type:'app',targetId:'spotify-beehive',label:'Spotify',visible:true,iconKey:'spotify'},
+            {id:'browser',type:'app',targetId:'com.webos.app.browser',label:'Böngésző',visible:true,iconKey:'browser'}
+          ]},
+          {id:'links',title:'Web',visible:true,items:[
+            {id:'nas',type:'link',targetId:'http://192.168.0.120',label:'Otthoni NAS',visible:true,iconKey:'web'}
+          ]},
+          {id:'cameras',title:'Kamerák',visible:true,items:[
+            {id:'gyerek',type:'preset',targetId:'gyerekszoba',label:'Gyerekszoba',visible:true,iconKey:'camera'},
+            {id:'kapu',type:'preset',targetId:'kapu',label:'Kapu',visible:true,iconKey:'camera'},
+            {id:'udvar',type:'preset',targetId:'udvar',label:'Udvar',visible:true,iconKey:'camera'}
+          ]},
+          {id:'utilities',title:'Eszközök',visible:true,items:[
+            {id:'all-apps',type:'allApps',targetId:'',label:'Összes alkalmazás',visible:true,iconKey:'apps'},
+            {id:'settings',type:'settings',targetId:'',label:'Launcher beállítások',visible:true,iconKey:'settings'},
+            {id:'live',type:'app',targetId:'com.webos.app.livetv',label:'Élő TV',visible:true,iconKey:'tv'},
+            {id:'hdmi1',type:'app',targetId:'com.webos.app.hdmi1',label:'HDMI 1',visible:true,iconKey:'hdmi'}
+          ]}
+        ]
+      }
+    };
+    window.LauncherUI.init(document.getElementById('launcher-root'), {
+      mode:'tv', viewMode:'overlay',
+      request:function (path, method, body) {
+        if (path === '/api/launcher/state') return Promise.resolve(state);
+        if (path === '/api/launcher/launch') return Promise.resolve({ok:true,lastUsed:null,body:body});
+        if (path === '/api/launcher/diagnostics') return Promise.resolve({ok:true,diagnostics:{cpuPercent:18.4,memory:{usedKiB:512000,totalKiB:1048576},load:['0.42','0.31','0.28'],temperatureC:54.2,disks:[{mount:'/',percent:'61%'}]}});
+        if (path === '/api/launcher/weather') return Promise.resolve({ok:true,enabled:true,weather:{label:'Budapest',code:2,current:{temperature:22,code:2},hourly:[{time:'2026-08-31T23:00',temperature:22,precipitationProbability:10,windSpeed:7,code:2},{time:'2026-09-01T00:00',temperature:21,precipitationProbability:12,windSpeed:6,code:1}],daily:[{date:'2026-08-31',min:15,max:24,precipitationProbability:20,code:2},{date:'2026-09-01',min:14,max:25,precipitationProbability:10,code:1}]}});
+        return Promise.resolve({ok:true});
+      }
+    });
+  }());
+  </script>
+</body>
+</html>

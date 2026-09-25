@@ -1,0 +1,28 @@
+# Secrets and production state
+*.pem
+*.key
+id_rsa*
+known_hosts
+lg-ssap.json
+config.json
+connections.json
+launcher.json
+state.json
+private-live/
+
+# Builds and toolchains
+build/
+*.ipk
+*.tar.gz
+*.zip
+remote-broker/remote-broker
+remote-broker/*.new
+remote-broker/*.v4
+
+# Logs and generated files
+*.log
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+node_modules/

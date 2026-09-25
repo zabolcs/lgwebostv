@@ -1,0 +1,154 @@
+# A Home Assistant indítja az overlayt egy mozgáseseményre.
+# Az overlay nem indít Home Assistant automatizálást visszafelé.
+switch:
+  - platform: rest
+    name: "Nappali LG TV"
+    resource: "http://192.168.0.223:8765/api/tv/power"
+    method: post
+    body_on: '{"state":"on"}'
+    body_off: '{"state":"off"}'
+    is_on_template: "{{ value_json.power.on }}"
+    availability: "{{ value_json.ok and value_json.power.state != 'unknown' }}"
+    headers:
+      Content-Type: application/json
+
+automation:
+  - alias: "Kapu kamera előnézet az LG TV-n"
+    id: lg_tv_gate_preview
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.kapu_mozgas
+        to: "on"
+    actions:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.mediaoverlay"
+            params:
+              v: 1
+              action: "show"
+              presetId: "kapu-preview"
+              ttlMs: 12000
+
+script:
+  lg_tv_pip_dynamic_image:
+    alias: "Dinamikus kép/MJPEG PiP"
+    mode: restart
+    sequence:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.mediaoverlay"
+            params:
+              v: 1
+              action: "show"
+              kind: "image"
+              url: "http://192.168.0.150:1984/api/stream.mjpeg?src=camera_udvar_felso_preview"
+              fit: "cover"
+              corner: "bottom-right"
+              width: 720
+              height: 405
+              marginX: 24
+              marginY: 24
+              ttlMs: 0
+
+  lg_tv_pip_close:
+    alias: "LG TV PiP bezárása"
+    mode: restart
+    sequence:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.mediaoverlay"
+            params:
+              v: 1
+              action: "dismiss"
+
+  lg_tv_pip_configure_defaults:
+    alias: "LG TV PiP alapértelmezések mentése"
+    mode: restart
+    sequence:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.mediaoverlay"
+            params:
+              v: 1
+              action: "configure"
+              corner: "top-left"
+              width: 640
+              height: 360
+              marginX: 32
+              marginY: 32
+              ttlMs: 20000
+
+  lg_tv_pip_save_preset:
+    alias: "LG TV PiP preset létrehozása vagy módosítása"
+    mode: restart
+    sequence:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.mediaoverlay"
+            params:
+              v: 1
+              action: "preset-save"
+              presetId: "udvar-preview"
+              kind: "image"
+              url: "http://192.168.0.150:1984/api/stream.mjpeg?src=camera_udvar_felso_preview"
+              fit: "cover"
+              clickAction: "openCamera"
+              cameraId: "udvar"
+
+  lg_tv_pip_delete_preset:
+    alias: "LG TV PiP preset törlése"
+    mode: restart
+    sequence:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.mediaoverlay"
+            params:
+              v: 1
+              action: "preset-delete"
+              presetId: "udvar-preview"
+
+  lg_tv_gate_fullscreen:
+    alias: "Kapu kamera teljes képernyőn"
+    mode: single
+    sequence:
+      - action: webostv.command
+        target:
+          entity_id: media_player.tv_nappali
+        data:
+          command: "system.launcher/launch"
+          payload:
+            id: "hu.szabi.cameraviewer"
+            params:
+              v: 1
+              action: "open"
+              cameraId: "kapu"
+              view: "full"
+
+# A layout minden mezője opcionális. A kimaradó érték a TV-n mentett alapértelmezésből jön.
+# ttlMs=0 esetén nincs automatikus bezárás. A preset-save ugyanazzal a presetId-val módosít,
+# új azonosítóval létrehoz. Az openCamera kizárólag a fix hu.szabi.cameraviewer appot indíthatja.

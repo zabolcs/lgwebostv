@@ -1,0 +1,28 @@
+[Unit]
+Description=LG TV browser control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lgtv-control
+Group=lgtv-control
+ExecStart=/usr/bin/python3 /opt/lgtv-control/server.py --config /etc/lgtv-control/config.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0027
+# The service normally stays far below this limit. 128 MiB leaves enough
+# temporary headroom for an on-demand 1920x1080 VNC framebuffer capture.
+MemoryMax=128M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target
