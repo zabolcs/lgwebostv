@@ -22,6 +22,21 @@ SCP=(scp -i "$KEY" -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking
 
 "${SSH[@]}" true
 test -z "$("${SSH[@]}" "findmnt /var/lib/eim 2>/dev/null || true")"
+
+if [ "${REFRESH_HOOK_ONLY:-0}" = "1" ]; then
+  "${SSH[@]}" "test -f '$BASE/enabled' && test -d '$BASE/runtime' && test -f '$HOOK'"
+  "${SSH[@]}" "cp -p '$HOOK' '$HOOK.before-refresh'"
+  "${SCP[@]}" tools/generated-tv-scripts/launcher-eim-overlay "$TV:$HOOK.new"
+  "${SSH[@]}" "sh -n '$HOOK.new'; chmod 755 '$HOOK.new'; mv -f '$HOOK.new' '$HOOK'; rm -f '$BASE/boot-pending' '$BASE/disabled-failsafe' '$BASE/last-good'; sync"
+  EXPECTED="$(sha256sum tools/generated-tv-scripts/launcher-eim-overlay | awk '{print $1}')"
+  ACTUAL="$("${SSH[@]}" "sha256sum '$HOOK' | awk '{print \$1}'")"
+  echo "HOOK_EXPECTED_SHA=$EXPECTED"
+  echo "HOOK_ACTUAL_SHA=$ACTUAL"
+  test "$EXPECTED" = "$ACTUAL"
+  echo EIM_OVERLAY_HOOK_REFRESH=PASS
+  exit 0
+fi
+
 "${SSH[@]}" "test ! -e '$BASE/enabled'"
 
 RAW="$("${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.service.eim/getLastInput' '{}' 2>&1")"
