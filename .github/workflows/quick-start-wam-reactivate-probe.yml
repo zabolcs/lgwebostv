@@ -10,13 +10,12 @@ on:
 permissions:
   contents: read
 
-# probe legacy LG WAM direct launch without instanceId on private bus
+# one-shot: measure prewarmed direct WAM from native Active without replacing guard file
 
 jobs:
   probe:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64]
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -26,9 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n tools/lab/quick-start-wam-noinstance-probe.sh
-      - name: Measure direct WAM launch without instanceId
+          bash -n tools/lab/quick-start-wam-active-sidecar-probe.sh
+      - name: Measure direct WAM from Active
         shell: bash
         run: |
           set -euo pipefail
-          bash tools/lab/quick-start-wam-noinstance-probe.sh
+          bash tools/lab/quick-start-wam-active-sidecar-probe.sh
