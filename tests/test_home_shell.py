@@ -406,6 +406,33 @@ handle_power_state Active
         self.assertEqual([c['payload']['id'] for c in launches], [server.LAUNCHER_APP_ID])
         self.assertEqual(launches[0]['payload']['params']['source'], 'quick-start-fast-lane')
 
+    def test_quick_start_fast_lane_uses_prewarmed_cover_before_full_launcher(self):
+        calls, _ = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+touch "$QUICK_COVER_READY"
+echo Active >"$POWER_STATE"
+echo Active >"$DIR/current-power"
+handle_power_state 'Active Standby'
+handle_power_state Active
+''')
+        launches = [call["payload"] for call in calls if call["uri"].endswith("/launch")]
+        self.assertEqual([call["id"] for call in launches],
+                         [server.LAUNCHER_OVERLAY_APP_ID, server.LAUNCHER_APP_ID])
+        self.assertEqual(launches[0]["params"]["source"], "quick-start-cover")
+        self.assertEqual(launches[0]["params"]["launcherHost"], "full-overlay")
+        self.assertEqual(launches[1]["params"]["source"], "quick-start-fast-lane")
+
+    def test_quick_start_fast_lane_without_cover_keeps_direct_full_path(self):
+        calls, _ = self.exercise_wake_guard('''
+quick_fast_lane_safe() { return 0; }
+echo Active >"$POWER_STATE"
+echo Active >"$DIR/current-power"
+handle_power_state 'Active Standby'
+handle_power_state Active
+''')
+        launches = [call["payload"] for call in calls if call["uri"].endswith("/launch")]
+        self.assertEqual([call["id"] for call in launches], [server.LAUNCHER_APP_ID])
+
     def test_quick_start_fast_lane_ignores_unknown_glitch_and_cold_start(self):
         calls, _ = self.exercise_wake_guard('''
 quick_fast_lane_safe() { return 0; }
