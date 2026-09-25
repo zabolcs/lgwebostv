@@ -1,0 +1,186 @@
+name: Activity Manager immediate probe via private TV transport
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/activity-manager-immediate-probe-via-pve.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Isolated Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install transport dependency
+        run: python -m pip install --disable-pip-version-check --quiet 'paramiko==3.5.1'
+
+      - name: Build and run no-reboot probe through private transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          python tools/lab/build-launcher-startup-probe.py >/tmp/lgtv-startup-probe-build.txt
+          python - <<'PY'
+          from __future__ import annotations
+          import importlib.util, json, os, shlex, sys, time
+          from pathlib import Path
+
+          ROOT=Path('/media/lgtv/checkpoint-20260925-20260925-092443')
+          APP='hu.szabi.launcher.startupprobe'
+          SERVICE='hu.szabi.launcher.startupprobe.service'
+          IPK=Path(os.environ['GITHUB_WORKSPACE'])/'build'/f'{APP}_0.0.2_all.ipk'
+          INSTALL=Path(os.environ['GITHUB_WORKSPACE'])/'scripts'/'install-local-on-tv.sh'
+          MANIFEST=f'/media/developer/apps/usr/palm/applications/{APP}/appinfo.json'
+          SERVICE_META=f'/media/developer/apps/usr/palm/services/{SERVICE}/services.json'
+          assert IPK.is_file() and INSTALL.is_file()
+
+          helpers=sorted(ROOT.rglob('remote.py'), key=lambda p:(len(p.parts),str(p)))
+          if not helpers:
+              raise SystemExit('private remote helper not found')
+          helper=helpers[0]
+          spec=importlib.util.spec_from_file_location('private_remote',helper)
+          remote=importlib.util.module_from_spec(spec)
+          sys.path.insert(0,str(helper.parent))
+          assert spec and spec.loader
+          spec.loader.exec_module(remote)
+
+          def run(c,cmd,timeout=45):
+              stdin,stdout,stderr=c.exec_command(cmd,timeout=timeout)
+              try: stdin.channel.shutdown_write()
+              except Exception: pass
+              out=stdout.read().decode(errors='replace')
+              err=stderr.read().decode(errors='replace')
+              rc=stdout.channel.recv_exit_status()
+              if rc:
+                  raise RuntimeError(f'command failed rc={rc}: {err[-500:]}')
+              return out
+
+          def luna(c,uri,payload):
+              cmd='luna-send -t 1 -f -w 3000 '+shlex.quote('luna://'+uri)+' '+shlex.quote(json.dumps(payload,separators=(',',':')))
+              text=run(c,cmd)
+              dec=json.JSONDecoder()
+              for line in reversed(text.splitlines()):
+                  for i,ch in enumerate(line):
+                      if ch!='{': continue
+                      try:
+                          obj,_=dec.raw_decode(line[i:])
+                          if isinstance(obj,dict): return obj
+                      except json.JSONDecodeError: pass
+              raise RuntimeError('no JSON from '+uri)
+
+          pve=remote.connect()
+          tv=None
+          installed=False
+          activity_id=None
+          manager=None
+          remote_dir=f'/tmp/hu.szabi.activity-probe.{os.getpid()}'
+          try:
+              tv=remote.connect_tv(pve)
+              run(tv,'command -v luna-send >/dev/null && command -v luna-send-pub >/dev/null')
+              print('TV_PRIVATE_TRANSPORT=PASS')
+
+              power=luna(tv,'com.webos.service.tvpower/power/getPowerState',{})
+              state=power.get('state','')
+              print('POWER_STATE='+str(state))
+              if state!='Active':
+                  print('LIVE_CHANGES=NONE')
+                  raise SystemExit(0)
+
+              exists=run(tv,f"if [ -e {shlex.quote(MANIFEST)} ] || [ -e {shlex.quote(SERVICE_META)} ]; then echo yes; else echo no; fi").strip()
+              if exists=='yes':
+                  print('PROBE_ALREADY_INSTALLED=yes')
+                  print('LIVE_CHANGES=NONE')
+                  raise SystemExit(0)
+
+              run(tv,'mkdir -p '+shlex.quote(remote_dir))
+              with tv.open_sftp() as sftp:
+                  sftp.put(str(IPK),remote_dir+'/probe.ipk')
+                  sftp.put(str(INSTALL),remote_dir+'/install.sh')
+              import hashlib
+              digest=hashlib.sha256(IPK.read_bytes()).hexdigest()
+              run(tv,'chmod 700 '+shlex.quote(remote_dir+'/install.sh')+' && sh '+shlex.quote(remote_dir+'/install.sh')+' '+shlex.quote(remote_dir+'/probe.ipk')+' '+shlex.quote(digest),90)
+              run(tv,f'test -f {shlex.quote(MANIFEST)} && test -f {shlex.quote(SERVICE_META)}')
+              installed=True
+              print('PROBE_INSTALL=PASS')
+
+              status=luna(tv,SERVICE+'/status',{})
+              if status.get('returnValue') is not True:
+                  raise RuntimeError('probe status unavailable')
+              print('SERVICE_STATUS=PASS')
+
+              arm=None
+              for alias in ('palm','webos'):
+                  arm=luna(tv,SERVICE+'/armImmediate',{'manager':alias})
+                  if arm.get('returnValue') is True:
+                      manager=alias
+                      break
+                  print(alias.upper()+'_ACTIVITY_CREATE=REJECTED')
+              if not arm or arm.get('returnValue') is not True:
+                  print('ACTIVITY_CREATE=REJECTED')
+                  if arm:
+                      print('ACTIVITY_ERROR_CODE='+str(arm.get('errorCode','')))
+                      print('ACTIVITY_ERROR_TEXT='+str(arm.get('errorText',''))[:180])
+                  raise SystemExit(2)
+
+              activity_id=arm.get('activityId')
+              print('ACTIVITY_CREATE=PASS')
+              print('ACTIVITY_MANAGER_ALIAS='+str(manager))
+              time.sleep(2)
+
+              status=luna(tv,SERVICE+'/status',{})
+              probe=(status.get('state') or {}).get('lastProbe') or {}
+              if probe.get('kind')!='immediate':
+                  raise RuntimeError('immediate callback was not observed')
+              epoch=probe.get('epochMs')
+              uptime=probe.get('bootUptimeSeconds')
+              if not isinstance(epoch,(int,float)) or not isinstance(uptime,(int,float)):
+                  raise RuntimeError('callback timing missing')
+              print('IMMEDIATE_CALLBACK=PASS')
+              print('CALLBACK_EPOCH_MS='+str(int(epoch)))
+              print(f'CALLBACK_BOOT_UPTIME_SECONDS={float(uptime):.3f}')
+          finally:
+              if tv is not None:
+                  if activity_id is not None and manager:
+                      try: luna(tv,SERVICE+'/cancel',{'manager':manager,'activityId':activity_id})
+                      except Exception as e: print('CANCEL_WARNING='+str(e)[:180])
+                  if installed:
+                      try:
+                          payload=json.dumps({'id':APP,'subscribe':True},separators=(',',':'))
+                          run(tv="/usr/bin/false")
+                      except TypeError:
+                          pass
+                      try:
+                          run(tv,"/usr/bin/luna-send-pub -t 1 -w 30000 -f 'luna://com.webos.appInstallService/dev/remove' "+shlex.quote(payload),45)
+                          for _ in range(40):
+                              left=run(tv,f"if [ -e {shlex.quote(MANIFEST)} ] || [ -e {shlex.quote(SERVICE_META)} ]; then echo yes; else echo no; fi").strip()
+                              if left=='no':
+                                  installed=False
+                                  print('PROBE_REMOVE=PASS')
+                                  break
+                              time.sleep(.5)
+                      except Exception as e:
+                          print('PROBE_REMOVE_WARNING='+str(e)[:180])
+                  try: run(tv,'rm -rf '+shlex.quote(remote_dir))
+                  except Exception: pass
+                  tv.close()
+              pve.close()
+              if installed:
+                  raise RuntimeError('probe cleanup did not complete')
+
+          print('NO_REBOOT=PASS')
+          print('PRODUCTION_LAUNCHER_UNCHANGED=PASS')
+          PY
