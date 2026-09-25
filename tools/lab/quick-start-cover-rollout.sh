@@ -115,7 +115,7 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.4.0" tools/generated-tv-scripts/guard.sh
+grep -q "guard v0.4.5" tools/generated-tv-scripts/guard.sh
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
 "${SSH[@]}" "sh -n '$GUARD.new'; chmod 755 '$GUARD.new'; mv -f '$GUARD.new' '$GUARD'"
@@ -125,7 +125,7 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.0 started'"
+"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.5 started'"
 echo COVER_GUARD_DEPLOY=PASS
 
 origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
@@ -230,8 +230,8 @@ if cover is None or full is None:
     raise SystemExit("cover/full surface timestamp missing")
 if not (0 <= cover < full):
     raise SystemExit(f"cover was not earlier than full: cover={cover}, full={full}")
-if cover > 6.0:
-    raise SystemExit(f"cover too slow to hide LG surface: {cover:.3f}s")
+if cover >= 2.20:
+    raise SystemExit(f"Screen On cover did not beat protected 2.368s baseline enough: {cover:.3f}s")
 if full-cover < 1.0:
     raise SystemExit(f"cover lead too small: {full-cover:.3f}s")
 print(f"COVER_LEAD_SECONDS={full-cover:.3f}")
@@ -241,7 +241,7 @@ PY
 echo COVER_GUARD_LOG_BEGIN
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null"
 echo COVER_GUARD_LOG_END
-"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick cover accepted'"
+"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'screen on cover accepted'"
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick fast lane accepted'"
 
 POST_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
