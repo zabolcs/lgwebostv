@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.3.7 guard: bounded boot wait, then a separate bounded launch attempt.
+# v0.3.8 guard: Quick Start fast lane with conservative fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -19,6 +19,9 @@ ACTIVE_SINCE=/tmp/hu.szabi.launcher.active-since
 PREWARM_AFTER=/tmp/hu.szabi.launcher.prewarm-after
 QUICK_PREWARM_AFTER=/tmp/hu.szabi.launcher.quick-prewarm-after
 QUICK_PREWARM_ATTEMPT=/tmp/hu.szabi.launcher.quick-prewarm-attempt
+QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
+QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
+EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
 FULL_VISIBLE=/tmp/hu.szabi.launcher.full-visible
@@ -118,7 +121,7 @@ arm_power_startup() {
 
 settle_wake() {
   diagnostic "wake $1 foreground=$current"
-  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE"
+  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
 }
 
 wake_window_open() {
@@ -150,6 +153,40 @@ snapshot_power_off_app() {
   esac
 }
 
+quick_fast_lane_safe() {
+  [ -f "$EIM_BASE/enabled" ] || return 1
+  [ -f "$EIM_BASE/last-good" ] || return 1
+  [ ! -e "$EIM_BASE/boot-pending" ] || return 1
+  [ ! -e "$EIM_BASE/disabled-failsafe" ] || return 1
+  mountpoint -q /var/lib/eim || return 1
+  mountpoint -q "$EIM_BASE/frozen-view" || return 1
+  return 0
+}
+
+quick_start_fast_launch() {
+  [ -f "$QUICK_WAKE_ARMED" ] || return 1
+  [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
+  [ ! -f "$RESUME_LAST" ] || return 1
+  [ ! -f "$HOME_ACTIVE" ] || return 1
+  quick_fast_lane_safe || return 1
+  [ ! -f "$WAKE_SIGNAL" ] || return 1
+  [ "$(fresh_power)" = Active ] || return 1
+  touch "$QUICK_FAST_ATTEMPT"
+  now=$(date +%s)
+  echo "$now" >"$LAST_LAUNCH"
+  origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
+  display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
+  payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-fast-lane","controlOrigin":"%s","displayPreferences":%s}}' "$APP" "$origin" "$display")
+  result=$(luna-send-pub -w 2500 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
+  date +%s >"$LAST_LAUNCH"
+  if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
+    diagnostic 'quick fast lane accepted'
+    return 0
+  fi
+  diagnostic 'quick fast lane failed; fallback remains armed'
+  return 1
+}
+
 handle_power_state() {
   state=$1
   previous=$(cat "$POWER_STATE" 2>/dev/null)
@@ -159,9 +196,22 @@ handle_power_state() {
   case "$state" in
     Active)
       # Screensaver dismissal is a user action, not a fresh TV power-on.
-      [ "$previous" = 'Screen Saver' ] || arm_power_startup
+      if [ "$previous" != 'Screen Saver' ]; then
+        arm_power_startup
+        if [ -f "$QUICK_WAKE_ARMED" ]; then
+          quick_start_fast_launch || true
+          rm -f "$QUICK_WAKE_ARMED"
+        fi
+      fi
       ;;
-    'Screen Saver') rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL";;
+    'Screen Saver')
+      rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
+      ;;
+    'Active Standby'|Suspend|'Screen Off')
+      [ "$previous" = Active ] && snapshot_power_off_app
+      touch "$QUICK_WAKE_ARMED"
+      rm -f "$QUICK_FAST_ATTEMPT" "$BOOT_READY" "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
+      ;;
     *)
       [ "$previous" = Active ] && snapshot_power_off_app
       rm -f "$BOOT_READY" "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
@@ -508,11 +558,11 @@ run_pending_tick() {
 }
 
 # START WORKER (test fixtures source only the functions above).
-rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL"
+rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.3.7 started'
+diagnostic 'guard v0.3.8 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
