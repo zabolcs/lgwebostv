@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   install:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 5
     steps:
