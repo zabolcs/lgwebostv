@@ -128,6 +128,28 @@ x=json.loads(sys.argv[1])
 raise SystemExit(0 if x.get("ok") else 1)
 PY
 
+SUBSCRIBED=0
+for i in $(seq 1 20); do
+  STATUS_BEFORE="$(node tools/lab/inject-launcher-selfwake-cdp.mjs "$OVERLAY" status 2>/dev/null || true)"
+  if [ -n "$STATUS_BEFORE" ] && python3 - "$STATUS_BEFORE" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+state=x.get("state") or {}
+errors=state.get("errors") or []
+if errors:
+    raise SystemExit(2)
+raise SystemExit(0 if len(state.get("events") or []) > 0 else 1)
+PY
+  then
+    SUBSCRIBED=1
+    echo "SELFWAKE_POWER_SUBSCRIPTION_READY_POLL=$i"
+    break
+  fi
+  sleep 0.1
+done
+test "$SUBSCRIBED" -eq 1
+echo SELFWAKE_POWER_SUBSCRIPTION=PASS
+
 "${SSH[@]}" "luna-send -t 1 -f -w 5000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"selfwake-probe\"}}' >/dev/null 2>&1"
 sleep 2
 stop_guard
