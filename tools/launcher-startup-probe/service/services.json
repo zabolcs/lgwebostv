@@ -1,0 +1,32 @@
+{
+  "id": "hu.szabi.launcher.startupprobe.service",
+  "description": "Launcher startup timing probe",
+  "services": [
+    {
+      "name": "hu.szabi.launcher.startupprobe.service",
+      "description": "Launcher startup timing probe",
+      "commands": [
+        {
+          "name": "armImmediate",
+          "description": "Create a non-persistent immediate callback probe",
+          "public": false
+        },
+        {
+          "name": "probe",
+          "description": "Record one Activity Manager callback timestamp",
+          "public": false
+        },
+        {
+          "name": "status",
+          "description": "Return probe state",
+          "public": false
+        },
+        {
+          "name": "cancel",
+          "description": "Cancel the last explicitly selected probe activity",
+          "public": false
+        }
+      ]
+    }
+  ]
+}
