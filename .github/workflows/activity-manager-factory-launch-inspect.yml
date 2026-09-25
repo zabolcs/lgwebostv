@@ -130,6 +130,12 @@ jobs:
           echo '=== BOOTD WINDOW AROUND CORE/MINIMAL/REST ==='
           "${SSH[@]}" "sed -n '170,370p' /var/log/bootd.log 2>/dev/null || true"
 
+          echo '=== FIRST APP BOOT SEQUENCE EXACT WINDOW ==='
+          "${SSH[@]}" "sed -n '185,275p' /var/log/bootd.log 2>/dev/null || true"
+
+          echo '=== FIRST APP / HOME AUTOLAUNCH CONFIG REFERENCES ==='
+          "${SSH[@]}" "grep -R -n -i -E 'firstAppId|firstapp-launched|Try to launch first app|homeAutoLaunch|CoverAppLaunchAction|FirstAppLaunch|checkHomeAutoLaunchValue' /etc /usr/palm /usr/share 2>/dev/null | head -320 || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
