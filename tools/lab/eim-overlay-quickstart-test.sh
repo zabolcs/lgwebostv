@@ -53,6 +53,9 @@ luna() {
 
 recover() {
   set +e
+  if ssh_ok; then
+    "${SSH[@]}" 'p=$(cat /tmp/hu.szabi.power-trace.pid 2>/dev/null || true); case "$p" in ""|*[!0-9]*) ;; *) kill "$p" 2>/dev/null || true;; esac; rm -f /tmp/hu.szabi.power-trace.pid' >/dev/null 2>&1 || true
+  fi
   if [ "$OFF_SENT" -eq 1 ] && [ "$COMMITTED" -ne 1 ]; then
     api_post /api/tv/power '{"state":"on"}' >/dev/null 2>&1 || true
     for _ in $(seq 1 90); do
@@ -91,6 +94,12 @@ PRE_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
 echo "PRE_STANDBY_UPTIME_SECONDS=$PRE_UPTIME"
 PRE_CDP="$(node tools/lab/measure-launcher-cdp.mjs "$APP_ID" 2>/dev/null || true)"
 echo "PRE_STANDBY_CDP=$PRE_CDP"
+
+"${SSH[@]}" 'rm -f /tmp/hu.szabi.power-trace.log /tmp/hu.szabi.power-trace.pid; (luna-send -i luna://com.webos.service.tvpower/power/getPowerState '"'"'{"subscribe":true}'"'"' 2>/dev/null | while IFS= read -r line; do up=$(cut -d" " -f1 /proc/uptime); now=$(date +%s); printf "%s %s %s\n" "$up" "$now" "$line"; done) >/tmp/hu.szabi.power-trace.log 2>&1 & echo $! >/tmp/hu.szabi.power-trace.pid'
+sleep 1
+PRE_MESSAGES_LINES="$("${SSH[@]}" 'wc -l </var/log/messages 2>/dev/null || echo 0')"
+echo "PRE_MESSAGES_LINES=$PRE_MESSAGES_LINES"
+echo POWER_TRACE_ARMED=PASS
 
 OFF_REPLY="$(api_post /api/tv/power '{"state":"off"}')"
 OFF_SENT=1
@@ -168,6 +177,42 @@ FG="$(luna com.webos.service.applicationmanager/getForegroundAppInfo '{}')"
 echo "POST_WAKE_FOREGROUND=$FG"
 echo "$FG" | grep -q '"appId"[[:space:]]*:[[:space:]]*"hu.szabi.launcher"'
 echo QUICKSTART_LAUNCHER_FOREGROUND=PASS
+
+"${SSH[@]}" 'p=$(cat /tmp/hu.szabi.power-trace.pid 2>/dev/null || true); case "$p" in ""|*[!0-9]*) ;; *) kill "$p" 2>/dev/null || true;; esac' >/dev/null 2>&1 || true
+"${SSH[@]}" 'cat /tmp/hu.szabi.power-trace.log 2>/dev/null || true' >"$TMP/power-trace.log"
+"${SSH[@]}" "tail -n +$((PRE_MESSAGES_LINES + 1)) /var/log/messages 2>/dev/null || true" >"$TMP/messages.delta"
+echo POWER_TRACE_BEGIN
+cat "$TMP/power-trace.log"
+echo POWER_TRACE_END
+python3 - "$TMP/power-trace.log" <<'PY'
+import json,sys
+from pathlib import Path
+events=[]
+for raw in Path(sys.argv[1]).read_text(errors="replace").splitlines():
+    parts=raw.split(" ",2)
+    if len(parts)!=3:
+        continue
+    try:
+        up=float(parts[0]); epoch=int(parts[1]); payload=json.loads(parts[2])
+    except Exception:
+        continue
+    events.append((up,epoch,payload))
+for i,(up,epoch,p) in enumerate(events):
+    print("POWER_EVENT_%02d_UPTIME=%.3f STATE=%s PROCESSING=%s" % (
+        i, up, p.get("state"), p.get("processing")))
+active=[e for e in events if e[2].get("state")=="Active"]
+if not active:
+    raise SystemExit("no Active power subscription event captured")
+first_active=active[0][0]
+earlier=[e for e in events if e[0] < first_active and (e[2].get("processing") or e[2].get("state") not in (None,"Active"))]
+print("FIRST_ACTIVE_UPTIME=%.3f" % first_active)
+print("EARLIER_NONTRIVIAL_EVENT_COUNT=%d" % len(earlier))
+for up,epoch,p in earlier:
+    print("EARLIER_EVENT_UPTIME=%.3f STATE=%s PROCESSING=%s" % (up,p.get("state"),p.get("processing")))
+PY
+echo WAKE_MESSAGES_POWER_BEGIN
+grep -E 'tvpower|powerState|processing|Active Standby|Suspend|turning_on|Request Power' "$TMP/messages.delta" | tail -200 || true
+echo WAKE_MESSAGES_POWER_END
 
 "${SSH[@]}" "mountpoint -q /var/lib/eim && mountpoint -q '$FROZEN'"
 "${SSH[@]}" "test -f '$BASE/enabled' && test -f '$BASE/last-good' && test ! -e '$BASE/boot-pending' && test ! -e '$BASE/disabled-failsafe'"
