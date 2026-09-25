@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.4.6 guard: cached prewarm process proof plus direct full-launch fallback.
+# v0.4.0 guard: prewarmed Quick Start cover plus direct full-launch fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -22,7 +22,6 @@ QUICK_PREWARM_ATTEMPT=/tmp/hu.szabi.launcher.quick-prewarm-attempt
 QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
 QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
-QUICK_COVER_PROCESS=/tmp/hu.szabi.launcher.full-overlay-prewarm-process
 QUICK_COVER_QUEUE=/tmp/hu.szabi.launcher.quick-cover-prewarm-queued
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
@@ -166,46 +165,6 @@ quick_fast_lane_safe() {
   return 0
 }
 
-cover_process_starttime() {
-  pid=$1
-  case "$pid" in ''|*[!0-9]*) return 1;; esac
-  [ -r "/proc/$pid/stat" ] || return 1
-  sed 's/^[^)]*) //' "/proc/$pid/stat" 2>/dev/null | awk '{print $20}'
-}
-
-cover_process_alive() {
-  [ -f "$QUICK_COVER_READY" ] || return 1
-  proof=$(cat "$QUICK_COVER_PROCESS" 2>/dev/null)
-  pid=${proof%% *}
-  expected=${proof#* }
-  case "$pid:$expected" in *[!0-9:]*|:|*:) return 1;; esac
-  actual=$(cover_process_starttime "$pid")
-  [ -n "$actual" ] && [ "$actual" = "$expected" ]
-}
-
-cache_cover_process() {
-  [ -f "$QUICK_COVER_READY" ] || { rm -f "$QUICK_COVER_PROCESS"; return 1; }
-  cover_process_alive && return 0
-  running=$(luna-send -t 1 -f -w 1200 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
-  pid=$(printf '%s\n' "$running" | tr ',' '\n' | awk '
-    /"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"/ { found=1; next }
-    found && /"webprocessid"[[:space:]]*:/ {
-      value=$0
-      sub(/^.*"webprocessid"[[:space:]]*:[[:space:]]*/, "", value)
-      sub(/^[^0-9]*/, "", value)
-      sub(/[^0-9].*$/, "", value)
-      if (value != "") print value
-      exit
-    }')
-  case "$pid" in ''|*[!0-9]*) rm -f "$QUICK_COVER_PROCESS"; return 1;; esac
-  start=$(cover_process_starttime "$pid")
-  case "$start" in ''|*[!0-9]*) rm -f "$QUICK_COVER_PROCESS"; return 1;; esac
-  printf '%s %s\n' "$pid" "$start" >"$QUICK_COVER_PROCESS.new"
-  mv -f "$QUICK_COVER_PROCESS.new" "$QUICK_COVER_PROCESS"
-  diagnostic "quick cover process cached pid=$pid"
-  return 0
-}
-
 quick_start_fast_launch() {
   [ -f "$QUICK_WAKE_ARMED" ] || return 1
   [ ! -f "$QUICK_FAST_ATTEMPT" ] || return 1
@@ -231,19 +190,20 @@ quick_start_fast_launch() {
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
 
   if [ -f "$QUICK_COVER_READY" ]; then
-    if cover_process_alive; then
+    running=$(luna-send -t 1 -f -w 900 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
+    if echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
       cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
       diagnostic 'quick cover dispatch'
       cover_result=$(luna-send-pub -w 1200 -t 1 -f luna://com.webos.applicationManager/launch "$cover_payload" 2>&1)
       if echo "$cover_result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
         diagnostic 'quick cover accepted'
       else
-        rm -f "$QUICK_COVER_READY" "$QUICK_COVER_PROCESS"
+        rm -f "$QUICK_COVER_READY"
         diagnostic 'quick cover failed; continuing with full launcher'
       fi
     else
-      rm -f "$QUICK_COVER_READY" "$QUICK_COVER_PROCESS"
-      diagnostic 'quick cover stale process proof; full launcher only'
+      rm -f "$QUICK_COVER_READY"
+      diagnostic 'quick cover stale; full launcher only'
     fi
   fi
 
@@ -519,9 +479,6 @@ queue_prewarm() {
   [ "$(cat "$POWER_STATE" 2>/dev/null)" = Active ] || return 0
   [ ! -f "$HOME_ACTIVE" ] || return 0
   epoch=$(cat "$ACTIVE_SINCE" 2>/dev/null)
-  if [ -f "$QUICK_COVER_READY" ]; then
-    cache_cover_process || true
-  fi
   if [ -n "$epoch" ] && [ ! -f "$QUICK_COVER_READY" ]; then
     if [ "$(cat "$QUICK_COVER_QUEUE" 2>/dev/null)" = "$epoch" ]; then
       # The cover preload is still pending (or failed). Do not start another
@@ -649,7 +606,7 @@ rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.4.6 started'
+diagnostic 'guard v0.4.0 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
