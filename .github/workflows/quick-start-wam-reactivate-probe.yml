@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: TV SAM alias
+# retry: precompute WAM payload while Active
 
 jobs:
   probe:
