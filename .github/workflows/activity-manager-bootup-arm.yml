@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   arm:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'ops: arm bootup probe once'
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     steps:
