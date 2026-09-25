@@ -106,6 +106,26 @@ service.register('armBootup', function (message) {
   });
 });
 
+service.register('armFirstAppLaunched', function (message) {
+  var manager;
+  try { manager = core.managerUri(message.payload); }
+  catch (error) { failure(message, 22, error.message); return; }
+
+  service.call(manager + '/create', core.firstAppLaunchedCreateRequest(), function (response) {
+    var result = core.publicResult(response && response.payload);
+    var state = readState();
+    state.lastFirstAppLaunchedArm = {
+      epochMs: Date.now(),
+      manager: manager,
+      returnValue: result.returnValue,
+      activityId: result.activityId || null,
+      errorCode: result.errorCode === undefined ? null : result.errorCode
+    };
+    writeState(state);
+    message.respond(result);
+  });
+});
+
 service.register('cancel', function (message) {
   var state = readState();
   var payload = message.payload || {};
