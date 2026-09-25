@@ -49,7 +49,8 @@ echo "PRE_RUNTIME=$PRE_RUNTIME"
 echo "$PRE_FROZEN" | grep -q '"appId":"hu.szabi.launcher"'
 echo "$PRE_RUNTIME" | grep -q '"appId":"com.webos.app.hdmi2"'
 
-BOOT_BEFORE="$("${SSH[@]}" 'cat /proc/sys/kernel/random/boot_id')"
+PRE_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
+echo "PRE_REBOOT_UPTIME_SECONDS=$PRE_UPTIME"
 "${SSH[@]}" 'sync; reboot' >/dev/null 2>&1 || true
 echo COLD_REBOOT_SENT=PASS
 
@@ -61,9 +62,16 @@ for i in $(seq 1 180); do
 done
 test "$RETURNED" -eq 1
 
-BOOT_AFTER="$("${SSH[@]}" 'cat /proc/sys/kernel/random/boot_id')"
-test "$BOOT_AFTER" != "$BOOT_BEFORE"
-echo COLD_BOOT_ID_CHANGED=PASS
+POST_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
+echo "POST_REBOOT_UPTIME_SECONDS=$POST_UPTIME"
+python3 - "$PRE_UPTIME" "$POST_UPTIME" <<'PY'
+import sys
+before=float(sys.argv[1])
+after=float(sys.argv[2])
+if not (after < 120 and after + 30 < before):
+    raise SystemExit(f"uptime did not prove reboot: before={before} after={after}")
+PY
+echo COLD_REBOOT_UPTIME_RESET=PASS
 
 STATUS="$(luna com.webos.bootManager/getBootStatus '{}')"
 echo "BOOT_STATUS=$STATUS"
@@ -101,6 +109,15 @@ echo "FOREGROUND=$FG"
 echo "$RUNTIME_LAUNCHER" | grep -q '"appId":"com.webos.app.hdmi2"'
 echo "$FG" | grep -q '"appId"[[:space:]]*:[[:space:]]*"hu.szabi.launcher"'
 echo RUNTIME_NOT_CLOBBERED_BY_LAUNCHER=PASS
+
+echo FAILSAFE_CONFIRM_WAIT=START
+sleep 50
+"${SSH[@]}" "test ! -e '$BASE/boot-pending'"
+"${SSH[@]}" "test -f '$BASE/last-good'"
+"${SSH[@]}" "test ! -e '$BASE/disabled-failsafe'"
+LAST_GOOD="$("${SSH[@]}" "cat '$BASE/last-good'")"
+echo "FAILSAFE_LAST_GOOD=$LAST_GOOD"
+echo FAILSAFE_CONFIRM=PASS
 
 COMMITTED=1
 echo EIM_OVERLAY_COLD_BOOT=PASS
