@@ -63,8 +63,27 @@ cleanup() {
 trap cleanup EXIT
 
 "${SSH[@]}" true
+stop_guard
+echo GUARD_STOPPED_FOR_INSTANCE_RESET=PASS
 "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
-sleep 0.5
+KILL_RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 2500 luna://com.webos.service.webappmanager/killApp '{\"appId\":\"$OVERLAY\",\"reason\":\"quick-start-instance-reset\"}' 2>&1" || true)"
+echo "WAM_KILL_RESULT=$KILL_RESULT"
+sleep 0.7
+POST_KILL="$("${SSH[@]}" "luna-send -t 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}' 2>&1" || true)"
+echo "POST_KILL_RUNNING_RAW=$POST_KILL"
+if echo "$POST_KILL" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
+  echo "overlay renderer survived first kill, retrying"
+  "${SSH[@]}" "luna-send-pub -t 1 -f -w 2500 luna://com.webos.service.webappmanager/killApp '{\"appId\":\"$OVERLAY\",\"reason\":\"quick-start-instance-reset-retry\"}' >/dev/null 2>&1 || true"
+  sleep 0.7
+fi
+POST_KILL2="$("${SSH[@]}" "luna-send -t 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}' 2>&1" || true)"
+echo "POST_KILL2_RUNNING_RAW=$POST_KILL2"
+if echo "$POST_KILL2" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
+  echo "overlay renderer could not be reset"
+  exit 31
+fi
+echo OVERLAY_RENDERER_RESET=PASS
+
 "${SSH[@]}" "rm -f '$WAM_EVENT_FILE' '$WAM_EVENT_PID'; nohup luna-send -i luna://com.webos.service.webappmanager/webProcessCreated '{\"subscribe\":true}' >'$WAM_EVENT_FILE' 2>&1 </dev/null & echo \$! >'$WAM_EVENT_PID'"
 sleep 0.3
 echo WAM_PROCESS_SUBSCRIPTION=PASS
@@ -92,6 +111,7 @@ done
 echo "PREWARM_CDP=$CDP"
 test "$READY" -eq 1
 echo PREWARM_READY=PASS
+sleep 0.4
 
 APPINFO="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
 RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
@@ -233,8 +253,7 @@ echo "WAM_PAYLOAD_READY=PASS"
 
 "${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-reactivate-probe\"}}' >/dev/null"
 sleep 1
-stop_guard
-echo GUARD_STOPPED=PASS
+echo GUARD_ALREADY_STOPPED=PASS
 PRE_LINES="$("${SSH[@]}" "wc -l </var/log/messages 2>/dev/null || echo 0")"
 START_MS="$(date +%s%3N)"
 RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 2500 luna://com.webos.service.webappmanager/launchApp '$PAYLOAD' 2>&1")"
