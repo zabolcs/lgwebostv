@@ -14,7 +14,7 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
   - Remote Mapper: 0.2.0
 - Shared launcher source lives under `apps/launcher/`; full, quick and overlay must not fork into separate UI implementations.
 - `launcher-runtime.js` is a build artifact generated in memory by `scripts/build-all.py`; it is intentionally not source-controlled.
-- The handoff describes `remote-broker/` as canonical source, but that directory is **not present in this public checkpoint**. Do not modify or reconstruct the production broker from inference. Broker work remains blocked until canonical source is supplied or explicitly recovered from the private checkpoint.
+- The handoff describes `remote-broker/` as canonical source. The 2026-09-25 GitHub export accidentally omitted the whole directory while trying to exclude the same-named compiled `remote-broker` binary. The canonical C source exists in the private/full checkpoint and is being restored. Do not reconstruct it from inference; broker work remains blocked until the verified source is re-imported and its contract test passes.
 - Exact live restore material, credentials, compiled production binaries, logs and snapshots remain outside Git.
 
 ## Non-negotiable safety constraints
@@ -54,9 +54,9 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 - [x] Confirm the public checkpoint contains the launcher, Camera Viewer, Media Overlay, Remote Mapper, CT125 control app, CT120 camera bridge, build/install scripts and regression tests.
 - [x] Confirm `launcher-runtime.js` is generated and is not missing source.
 - [x] Make the native broker contract test explicitly SKIP when the canonical broker source is absent; this skip is evidence of incompleteness, not a passing broker validation.
-- [ ] Recover/confirm canonical `remote-broker/` source before any broker development or full-suite release.
+- [ ] Restore the canonical `remote-broker/` source from the full checkpoint after fixing the export filter; verify its hash/provenance and run the broker contract test before any broker development or full-suite release.
 - [ ] Decide whether editable source for Magic Remote overlay and webwrappers should be recovered into the public source repository; current handoff says only deployed copies are preserved privately.
-- [ ] Audit `SOURCE-SHA256SUMS.txt` against the imported source layout.
+- [ ] Audit `SOURCE-SHA256SUMS.txt` against the imported source layout and document the corrected GitHub export filter so a binary named `remote-broker` cannot exclude the `remote-broker/` source directory again.
 
 ### P0.4 Baseline parity and reproducibility gate — REQUIRED BEFORE LIVE EXPERIMENTS
 
@@ -68,6 +68,17 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 - [ ] Classify each production component as **source-complete**, **private-restore-only**, or **missing canonical source**.
 - [ ] Normalize stale pre-GitHub paths so the repository itself is the primary source of truth.
 - [ ] Do not start reboot/power-cycle experiments until this gate is satisfied for the launcher/control path being changed.
+
+### P0.5 GitHub baseline release — REQUIRED BEFORE FEATURE WORK
+
+- [ ] Restore and validate the canonical `remote-broker/` source.
+- [ ] Re-run the complete CI with the broker contract test active, not skipped.
+- [ ] Normalize current component versions in top-level documentation to match manifests/handoff.
+- [ ] Replace stale pre-GitHub source paths with repository-root paths while preserving clearly marked private-restore references.
+- [ ] Confirm the validated `develop` commit is the intended stable baseline.
+- [ ] Fast-forward `master` from the initial upload placeholder to that validated baseline.
+- [ ] Remove the redundant legacy `main` branch after `master` is established and no reference depends on it.
+- [ ] Keep `develop` as the active development branch after baseline promotion.
 
 ## P1 – Safe CI and development workflow
 
@@ -133,7 +144,7 @@ A release candidate may move from `develop` toward `master` only when:
 2. every skipped test is explicitly explained and no skip hides a changed subsystem;
 3. deterministic builds pass twice with identical hashes;
 4. source/version manifests are internally consistent;
-5. the changed subsystem is source-complete in Git; a full-suite release remains blocked while the canonical remote-broker source is missing;
+5. the changed subsystem is source-complete in Git; a full-suite release remains blocked until the corrected export restores and validates the canonical remote-broker source;
 6. no private material is present in the Git diff;
 7. all live changes have explicit rollback instructions;
 8. required TV/CT live checks for the changed area have been completed and documented;
