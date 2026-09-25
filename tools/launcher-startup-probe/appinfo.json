@@ -1,6 +1,6 @@
 {
   "id": "hu.szabi.launcher.startupprobe",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "vendor": "Szabolcs",
   "type": "web",
   "main": "index.html",
@@ -15,5 +15,8 @@
   "spinnerOnLaunch": false,
   "disableBackHistoryAPI": true,
   "resolution": "1920x1080",
-  "requiredMemory": 64
+  "requiredMemory": 64,
+  "requiredACG": [
+    "activity.operation"
+  ]
 }
