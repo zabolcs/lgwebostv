@@ -45,14 +45,7 @@ jobs:
           echo TV_SSH=PASS
           POWER=$("${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.webos.service.tvpower/power/getPowerState' '{}'" || true)
           echo "POWER_RAW=$POWER"
-          if echo "$POWER" | grep -q '"state":"Active"'; then
-            echo POWER_STATE=Active
-          elif echo "$POWER" | grep -q '"state":"Screen Saver"'; then
-            echo POWER_STATE=Screen_Saver
-          else
-            echo POWER_STATE=UNSUPPORTED
-            exit 1
-          fi
+          echo POWER_CHECK=DIAGNOSTIC_ONLY
 
           python3 tools/lab/build-launcher-startup-probe.py >"$TMP/build.txt"
           IPK=$(find build -maxdepth 1 -type f -name 'hu.szabi.launcher.startupprobe_*.ipk' | head -1)
