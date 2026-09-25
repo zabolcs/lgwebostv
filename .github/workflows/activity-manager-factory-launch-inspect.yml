@@ -37,8 +37,8 @@ jobs:
           "${SSH[@]}" true
           echo TV_SSH=PASS
 
-          echo '=== FACTORY ACTIVITY ID 3 ==='
-          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":3,\"current\":true,\"internal\":true}' 2>&1" || true
+          echo '=== FACTORY ACTIVITY ID 2 ==='
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":2,\"current\":true,\"internal\":true}' 2>&1" || true
 
           echo '=== MANAGER INFO ==='
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getManagerInfo' '{}' 2>&1" || true
@@ -47,6 +47,6 @@ jobs:
           "${SSH[@]}" "grep -R -n -E 'demo\.smartdemokit|smartdemokit|activitymanager|applicationmanager/launch|getBootStatus' /usr/share/luna-service2/roles.d /usr/share/luna-service2/client-permissions.d /var/luna-service2/roles.d /var/luna-service2/client-permissions.d 2>/dev/null | head -240 || true"
 
           echo '=== SMARTDEMOKIT APPINFO/SERVICE REFERENCES ==='
-          "${SSH[@]}" "find /usr/palm /media/cryptofs/apps /media/developer/apps -maxdepth 7 -type f \( -name appinfo.json -o -name services.json -o -name package.json \) 2>/dev/null | while read f; do grep -H -E 'smartdemokit|demo\.smartdemokit' \"$f\" 2>/dev/null || true; done | head -160"
+          "${SSH[@]}" "grep -R -n -E 'smartdemokit|demo\.smartdemokit' /usr/palm /media/cryptofs/apps /media/developer/apps 2>/dev/null | head -160 || true"
 
           echo FACTORY_INSPECTION_COMPLETE=PASS
