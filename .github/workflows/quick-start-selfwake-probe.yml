@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# one-shot: verify in-renderer PalmSystem.activate wake path
+
 jobs:
   probe:
     runs-on: [self-hosted, Linux, X64]
