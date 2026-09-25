@@ -128,6 +128,19 @@ sleep 1
 "${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.5.0 started'"
 echo COVER_GUARD_DEPLOY=PASS
 
+PARK_RESULT="$(node tools/lab/park-launcher-cdp.mjs "$OVERLAY" 2>/dev/null || true)"
+echo "COVER_PARK_RESULT=$PARK_RESULT"
+python3 - "$PARK_RESULT" <<'PY'
+import json,sys
+try:
+    x=json.loads(sys.argv[1])
+except Exception:
+    raise SystemExit("cover park returned no valid result")
+raise SystemExit(0 if x.get("ok") and x.get("hidden", x.get("after",{}).get("hidden")) is not False else 1)
+PY
+"${SSH[@]}" "rm -f '$COVER_READY' /tmp/hu.szabi.launcher.quick-wam-cover.json /tmp/hu.szabi.launcher.quick-wam-attempt /tmp/hu.szabi.launcher.quick-wam-accepted /tmp/hu.szabi.launcher.full-overlay-visible"
+echo COVER_PARKED=PASS
+
 origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
 display="$("${SSH[@]}" "cat '$DIR/display-preferences.json' 2>/dev/null")"
 [ -n "$display" ] || display='{}'
