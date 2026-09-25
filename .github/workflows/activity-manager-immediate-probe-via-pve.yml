@@ -59,7 +59,7 @@ jobs:
           remote=types.ModuleType('private_remote')
           remote.__file__=str(helper)
           source=helper.read_text(encoding='utf-8')
-          source='\\n'.join(
+          source='\n'.join(
               line for line in source.splitlines()
               if not ('sys.path.' in line and ('insert(' in line or 'append(' in line))
           )
