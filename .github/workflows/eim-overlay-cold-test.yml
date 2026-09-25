@@ -12,6 +12,7 @@ permissions:
 
 # trigger: failsafe cold verification
 # trigger: ordered overlay cold verification
+# trigger: final cold verification
 
 jobs:
   test:
