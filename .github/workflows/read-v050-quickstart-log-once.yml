@@ -1,0 +1,32 @@
+name: Read v0.5.0 Quick Start log once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/read-v050-quickstart-log-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 3
+    steps:
+      - name: Read TV RAM logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          echo QUICK_WAKE_LOG_BEGIN
+          "${SSH[@]}" "tail -n 180 /tmp/hu.szabi.launcher-wake.log 2>/dev/null || true"
+          echo QUICK_WAKE_LOG_END
+          echo SURFACE_LOG_BEGIN
+          "${SSH[@]}" "tail -n 1200 /var/log/messages 2>/dev/null | grep -E 'hu[.]szabi[.]launcher[.]overlay|NL_VSC|Prepare Resume|LastInput Ready|Screen On' | tail -n 180 || true"
+          echo SURFACE_LOG_END
