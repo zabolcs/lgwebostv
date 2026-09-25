@@ -2,6 +2,10 @@
 
 This is the canonical development roadmap for the GitHub source checkpoint imported on 2026-09-25.
 
+## Primary objective
+
+Reduce the time until the custom launcher is visibly usable after both a cold TV reboot and a Quick Start wake. The repository/CI work is infrastructure for that goal, not the product goal itself. The current leading hypothesis is that launch dispatch happens too late in the boot/wake sequence; therefore trigger timing must be improved before further UI micro-optimization.
+
 ## Baseline
 
 - Repository workflow: `develop` is the active development branch; `master` is the stable/release branch.
@@ -37,45 +41,45 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 - [x] Import the source-only checkpoint without private live material.
 - [x] Remove the archive from the repository after import.
 
-### P0.2 Canonical project control — IN PROGRESS
+### P0.2 Canonical project control — MOSTLY DONE
 
 - [x] Establish this file as the canonical roadmap.
-- [ ] Replace the one-shot checkpoint inspection workflow with normal source validation.
-- [ ] Add a read-only CI gate on the self-hosted Linux/X64 runner.
-- [ ] Run the complete safe offline regression suite.
-- [ ] Run the deterministic IPK build.
-- [ ] Record generated artifact names and SHA-256 hashes.
-- [ ] Verify a second build produces byte-identical IPKs.
+- [x] Replace the one-shot checkpoint inspection workflow with normal source validation.
+- [x] Add a read-only CI gate on the self-hosted Linux/X64 runner.
+- [x] Run the complete safe offline regression suite.
+- [x] Run the deterministic IPK build.
+- [x] Record generated artifact names and SHA-256 hashes in CI evidence.
+- [x] Verify a second build produces byte-identical IPKs.
 - [ ] Resolve documentation paths left over from the pre-GitHub `source/current-suite/` layout.
 - [ ] Reconcile old historical test reports with the 2026-09-25 production handoff; historical reports must not be presented as current release evidence.
 
-### P0.3 Source completeness audit — BLOCKED/PARTIAL
+### P0.3 Source completeness audit — DONE FOR CANONICAL EDITABLE SOURCE
 
 - [x] Confirm the public checkpoint contains the launcher, Camera Viewer, Media Overlay, Remote Mapper, CT125 control app, CT120 camera bridge, build/install scripts and regression tests.
 - [x] Confirm `launcher-runtime.js` is generated and is not missing source.
 - [x] Make the native broker contract test explicitly SKIP when the canonical broker source is absent; this skip is evidence of incompleteness, not a passing broker validation.
 - [x] Recover the canonical `remote-broker/remote-broker.c` from the original project/full checkpoint and fix the export filter. Corrected source SHA-256: `a2e1ba57a32670a038576f7696da8d29fc09added04a5452a645dbff51397d7c`.
 - [x] Audit the corrected export for additional omissions: 33 development/diagnostic helper scripts and seven generated TV-script reference copies were restored; no other editable application source was found missing.
-- [ ] Import the corrected 237-file export into GitHub `develop`, preserving repository-only CI/roadmap files added after the original export.
-- [ ] Re-enable the native broker contract test without a source-missing skip and require PASS.
+- [x] Import the corrected 237-file export into GitHub `develop`, preserving repository-only CI/roadmap files added after the original export. Import commit: `3c38561`.
+- [x] Re-enable the native broker contract test without a source-missing skip and require PASS.
 - [ ] Decide whether editable source for Magic Remote overlay and webwrappers should be recovered into the public source repository; current handoff says only deployed copies are preserved privately.
-- [ ] Import and verify the corrected `SOURCE-SHA256SUMS.txt` / source-completeness audit in GitHub. Corrected package evidence: ZIP SHA-256 `1b5ddcafb739f8e1d9900626a353f42209173ed99f8efe6007b4683e638f735e`; TAR SHA-256 `3a9b51861a19888a91e430ff9732a8ce076987cd39e6373098d4b430946c11cf`.
+- [x] Import and verify the corrected `SOURCE-SHA256SUMS.txt` / source-completeness audit in GitHub. Corrected package evidence: ZIP SHA-256 `1b5ddcafb739f8e1d9900626a353f42209173ed99f8efe6007b4683e638f735e`; TAR SHA-256 `3a9b51861a19888a91e430ff9732a8ce076987cd39e6373098d4b430946c11cf`.
 
 ### P0.4 Baseline parity and reproducibility gate — REQUIRED BEFORE LIVE EXPERIMENTS
 
-- [ ] Get all available-source Python and Node regression suites green on the self-hosted runner.
-- [ ] Produce all six webOS IPKs from GitHub source.
-- [ ] Build twice and prove byte-identical SHA-256 hashes.
-- [ ] Record which tests are skipped because source/material is intentionally absent.
-- [ ] Compare app manifests and documented production versions with the 2026-09-25 handoff.
-- [ ] Classify each production component as **source-complete**, **private-restore-only**, or **missing canonical source**.
+- [x] Get all available-source Python and Node regression suites green on the self-hosted runner.
+- [x] Produce all six webOS IPKs from GitHub source.
+- [x] Build twice and prove byte-identical SHA-256 hashes.
+- [x] Record/inspect skips: the remaining environment-dependent Pillow thumbnail test is intentionally optional; broker validation is active and passing.
+- [x] Compare app manifests with the 2026-09-25 handoff; production manifest versions match.
+- [x] Classify source state: canonical editable suite is source-complete; Magic Remote overlay and some webwrappers remain private-restore-only because no canonical editable source existed in the original project.
 - [ ] Normalize stale pre-GitHub paths so the repository itself is the primary source of truth.
-- [ ] Do not start reboot/power-cycle experiments until this gate is satisfied for the launcher/control path being changed.
+- [x] Launcher/control source and validation gate satisfied. Reboot/power-cycle still requires explicit operator approval.
 
-### P0.5 GitHub baseline release — REQUIRED BEFORE FEATURE WORK
+### P0.5 GitHub baseline hygiene — REQUIRED BEFORE STABLE PROMOTION, NOT A BLOCKER FOR LATENCY EXPERIMENTS
 
-- [ ] Import the corrected audited source export, including `remote-broker/`, the 33 restored helper scripts, seven generated TV-script reference copies and `docs/SOURCE-COMPLETENESS-AUDIT.md`.
-- [ ] Re-run the complete CI with the broker contract test active, not skipped.
+- [x] Import the corrected audited source export, including `remote-broker/`, the 33 restored helper scripts, seven generated TV-script reference copies and `docs/SOURCE-COMPLETENESS-AUDIT.md`.
+- [x] Re-run the complete CI with the broker contract test active, not skipped.
 - [ ] Normalize current component versions in top-level documentation to match manifests/handoff.
 - [ ] Replace stale pre-GitHub source paths with repository-root paths while preserving clearly marked private-restore references.
 - [ ] Confirm the validated `develop` commit is the intended stable baseline.
@@ -102,7 +106,17 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 - [ ] Document the GitHub → Actions → self-hosted runner → LAN/TV execution model.
 - [ ] Document release/version rules after the baseline suite has been validated; do not silently couple independent app versions without an explicit decision.
 
-## P3 – Measurement and live-state parity
+## P3 – Launcher startup timing investigation — NEXT
+
+The immediate goal is not a generic live-state audit. It is to identify and remove the delay between the point at which webOS can already launch apps and the point at which the current guard/SSAP path dispatches the custom launcher.
+
+- [ ] Establish a no-reboot baseline timeline for the current launch path.
+- [ ] Measure TV-ready/app-launchable state versus current launcher dispatch time.
+- [ ] Keep dispatch ACK, WAM navigation/paint and Surface Manager visibility as separate timestamps.
+- [ ] Determine cold-boot and Quick Start wake paths separately; they may require different triggers.
+- [ ] Prefer earlier native webOS lifecycle signals over faster polling.
+
+### Supporting live-state parity
 
 - [ ] Establish a read-only/manual diagnostics workflow for the self-hosted runner; no deployment or reboot.
 - [ ] Capture current CT125/TV component versions, service state and launcher configuration without changing them.
