@@ -105,7 +105,7 @@ echo "PROCESSES_RAW=$PROCESSES"
 echo "SAM_RUNNING_RAW=$SAM_RUNNING"
 echo "WAM_PROCESS_EVENTS_RAW=$EVENTS"
 echo "OVERLAY_LOGS_RAW=$LOGS"
-PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$EVENTS" "$LOGS" "$CDP" "$origin" "$display" "$OVERLAY" <<'PY'
+PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$SAM_RUNNING" "$EVENTS" "$LOGS" "$CDP" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
 def timed_payload(raw):
     marker="payload "
@@ -118,13 +118,23 @@ def timed_payload(raw):
 appinfo=timed_payload(sys.argv[1])
 running=timed_payload(sys.argv[2])
 processes=timed_payload(sys.argv[3])
-events_raw=sys.argv[4]
-logs_raw=sys.argv[5]
-cdp=json.loads(sys.argv[6])
-origin=sys.argv[7]; display=json.loads(sys.argv[8]); appid=sys.argv[9]
+try:
+    sam_running=timed_payload(sys.argv[4])
+except Exception:
+    sam_running={}
+events_raw=sys.argv[5]
+logs_raw=sys.argv[6]
+cdp=json.loads(sys.argv[7])
+origin=sys.argv[8]; display=json.loads(sys.argv[9]); appid=sys.argv[10]
 item=next((x for x in running.get("running",[]) if x.get("id")==appid),None)
 instance_id=(item or {}).get("instanceId")
 webprocess_id=(item or {}).get("webprocessid")
+if not instance_id:
+    for app in sam_running.get("running",[]):
+        if (app.get("id")==appid or app.get("appId")==appid) and app.get("instanceId"):
+            instance_id=str(app["instanceId"])
+            webprocess_id=app.get("webprocessid") or webprocess_id
+            break
 if not instance_id:
     raw=cdp.get("launchParams") or ""
     try:
@@ -193,7 +203,7 @@ if not instance_id:
         if instance_id:
             break
 if not instance_id:
-    raise SystemExit("overlay instanceId missing from launchParams/WAM events/running/process data/TV logs")
+    raise SystemExit("overlay instanceId missing from SAM running/launchParams/WAM data/TV logs")
 desc=appinfo.get("appInfo")
 if not isinstance(desc,dict):
     raise SystemExit("overlay appInfo missing")
