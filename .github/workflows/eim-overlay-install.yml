@@ -27,10 +27,8 @@ jobs:
           bash -n tools/lab/install-eim-overlay.sh
           sh -n tools/generated-tv-scripts/launcher-eim-overlay
 
-      - name: Refresh overlay hook without reboot
+      - name: Install failsafe overlay without reboot
         shell: bash
-        env:
-          REFRESH_HOOK_ONLY: "1"
         run: |
           set -euo pipefail
           bash tools/lab/install-eim-overlay.sh
