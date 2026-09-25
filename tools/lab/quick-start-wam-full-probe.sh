@@ -15,8 +15,23 @@ ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
 SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
 
 "${SSH[@]}" true
-RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
+READY=0
+POWER=""
+RUNNING=""
+for i in $(seq 1 24); do
+  POWER="$("${SSH[@]}" "luna-send -n 1 -f -w 1200 luna://com.webos.service.tvpower/power/getPowerState '{}'" 2>&1 || true)"
+  RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1 || true)"
+  if echo "$POWER" | grep -Eq '"state"[[:space:]]*:[[:space:]]*"Active"' &&
+     echo "$RUNNING" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
+    READY=1
+    echo "TV_WAM_READY_POLL=$i"
+    break
+  fi
+  sleep 0.5
+done
+echo "POWER_BEFORE=$POWER"
 echo "RUNNING_BEFORE=$RUNNING"
+test "$READY" -eq 1
 echo "$RUNNING" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher"'
 
 CDP="$(node tools/lab/measure-launcher-cdp.mjs "$APP" 2>/dev/null || true)"
