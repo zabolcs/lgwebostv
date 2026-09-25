@@ -30,5 +30,12 @@ jobs:
           find "$ROOT" -type f \( -name 'id_rsa' -o -name '*.key' -o -name '*ssh*key*' \) -printf '%P\n' 2>/dev/null | sort | head -100
           echo "RESTORE_SCRIPTS:"
           find "$ROOT" -type f \( -iname '*restore*' -o -iname '*remote.py' -o -iname '*deploy*.py' \) -printf '%P\n' 2>/dev/null | sort | head -200
+          if python3 -c 'import paramiko' >/dev/null 2>&1; then
+            echo "PYTHON_PARAMIKO=yes"
+          else
+            echo "PYTHON_PARAMIKO=no"
+          fi
+          echo "PARAMIKO_TREE_CANDIDATES:"
+          find "$ROOT" -type d -name paramiko -path '*/site-packages/*' -printf '%P\n' 2>/dev/null | sort | head -20
           echo "PVE_CT_REFERENCES:"
           grep -RIlE '192\.168\.0\.120|192\.168\.0\.223|pct (exec|push|pull)|ct125' "$ROOT" 2>/dev/null             | sed "s#^$ROOT/##" | sort | head -200
