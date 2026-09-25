@@ -91,6 +91,33 @@ APPS = {
     },
 }
 
+DIAGNOSTIC_APPS = {
+    "launcher-startup-probe": {
+        "id": "hu.szabi.launcher.startupprobe",
+        "source_dir": "tools/launcher-startup-probe",
+        "manifest_path": "tools/launcher-startup-probe/appinfo.json",
+        "files": (
+            "appinfo.json",
+            "index.html",
+            "icon.png",
+            "icon-large.png",
+            "splash-black.png",
+        ),
+        "services": (
+            {
+                "id": "hu.szabi.launcher.startupprobe.service",
+                "source_dir": "tools/launcher-startup-probe/service",
+                "files": (
+                    "package.json",
+                    "services.json",
+                    "service-core.js",
+                    "service.js",
+                ),
+            },
+        ),
+    },
+}
+
 
 def tar_gz(entries: list[tuple[str, bytes | None, int]]) -> bytes:
     output = io.BytesIO()
