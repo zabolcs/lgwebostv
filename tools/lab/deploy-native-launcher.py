@@ -4,7 +4,7 @@ import hashlib
 import shlex
 import sys
 ROOT=Path(__file__).resolve().parent
-SOURCE=ROOT/'lgtv-remote-broker/remote-control'
+SOURCE=ROOT.parent.parent/'remote-control'
 sys.path.insert(0,str(ROOT/'checkpoint-original/LGTV-checkpoint-2026-09-19/tools'))
 import remote
 
