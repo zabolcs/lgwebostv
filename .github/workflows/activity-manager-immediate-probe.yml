@@ -151,6 +151,13 @@ jobs:
           "${SSH[@]}" "test -f '$MANIFEST' && test -f '$SERVICE_META'"
           echo "PROBE_INSTALL=PASS"
 
+          # dev/install places the downloadable service files correctly, but on
+          # this TV firmware hubd does not immediately discover the new service.
+          # Ask LS2 to rescan dynamic service definitions before the first call.
+          "${SSH[@]}" "ls-control scan-services >/tmp/hu.szabi.activity-probe-scan.log 2>&1 || true"
+          sleep 1
+          echo "SERVICE_REGISTRY_RESCAN=DONE"
+
           remove_probe() {
             set +e
             "${SSH[@]}" "/usr/bin/luna-send-pub -t 1 -w 30000 -f \
