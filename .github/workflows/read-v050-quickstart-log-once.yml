@@ -24,6 +24,9 @@ jobs:
           chmod 600 "$TMP/id_rsa"
           ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
           SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          echo QUICK_WAKE_LOG_ROTATED_BEGIN
+          "${SSH[@]}" "tail -n 240 /tmp/hu.szabi.launcher-wake.log.1 2>/dev/null || true"
+          echo QUICK_WAKE_LOG_ROTATED_END
           echo QUICK_WAKE_LOG_BEGIN
           "${SSH[@]}" "tail -n 180 /tmp/hu.szabi.launcher-wake.log 2>/dev/null || true"
           echo QUICK_WAKE_LOG_END
