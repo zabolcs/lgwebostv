@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# read-only: discover retained overlay instanceId before any renderer reset
+# read-only retry: discover retained overlay instanceId before any renderer reset
 
 jobs:
   probe:
