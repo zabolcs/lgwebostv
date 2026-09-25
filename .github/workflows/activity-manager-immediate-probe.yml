@@ -186,7 +186,20 @@ jobs:
 
           sleep 1
           luna_file status_before "$SERVICE_ID/status" '{}'
-          STATUS_BEFORE="$(extract_json "$TMP/status_before.txt")"
+          if ! STATUS_BEFORE="$(extract_json "$TMP/status_before.txt" 2>/dev/null)"; then
+            echo "SERVICE_STATUS=NO_JSON"
+            echo "--- SERVICE META ---"
+            "${SSH[@]}" "cat '$SERVICE_META' 2>&1 || true"
+            echo "--- SERVICE FILES ---"
+            "${SSH[@]}" "find '/media/developer/apps/usr/palm/services/$SERVICE_ID' -maxdepth 2 -type f -print 2>&1 || true"
+            echo "--- LS-CONTROL ---"
+            "${SSH[@]}" "ls-control -l 2>&1 | grep -F '$SERVICE_ID' || true"
+            echo "--- PROCESSES ---"
+            "${SSH[@]}" "ps w 2>&1 | grep -E '[n]ode|startupprobe' || true"
+            echo "--- RAW LUNA STATUS ---"
+            cat "$TMP/status_before.txt" || true
+            exit 4
+          fi
           python3 - "$STATUS_BEFORE" <<'PY'
           import json, sys
           data = json.loads(sys.argv[1])
