@@ -61,6 +61,13 @@ jobs:
             "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityName\":\"$name\",\"current\":true,\"internal\":true}' 2>&1" || true
           done
 
+          echo '=== EARLY ACTIVITIES BY CURRENT ID ==='
+          for id in 5 6 64 66 108
+          do
+            echo "--- ACTIVITY_ID=$id ---"
+            "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$id,\"current\":true,\"internal\":true}' 2>&1" || true
+          done
+
           echo '=== BOOT MANAGER CURRENT STATUS ==='
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.bootManager/getBootStatus' '{}' 2>&1" || true
 
