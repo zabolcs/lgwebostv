@@ -83,9 +83,11 @@ echo PREWARM_READY=PASS
 
 APPINFO="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
 RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
+PROCESSES="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/getWebProcessSize '{}'" 2>&1)"
 echo "APPINFO_RAW=$APPINFO"
 echo "RUNNING_RAW=$RUNNING"
-PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$origin" "$display" "$OVERLAY" <<'PY'
+echo "PROCESSES_RAW=$PROCESSES"
+PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
 def timed_payload(raw):
     marker="payload "
@@ -97,10 +99,22 @@ def timed_payload(raw):
     return value
 appinfo=timed_payload(sys.argv[1])
 running=timed_payload(sys.argv[2])
-origin=sys.argv[3]; display=json.loads(sys.argv[4]); appid=sys.argv[5]
+processes=timed_payload(sys.argv[3])
+origin=sys.argv[4]; display=json.loads(sys.argv[5]); appid=sys.argv[6]
 item=next((x for x in running.get("running",[]) if x.get("id")==appid),None)
-if not item or not item.get("instanceId"):
-    raise SystemExit("overlay instanceId missing")
+instance_id=(item or {}).get("instanceId")
+webprocess_id=(item or {}).get("webprocessid")
+if not instance_id:
+    for proc in processes.get("WebProcesses",[]):
+        for app in proc.get("runningApps",[]):
+            if app.get("id")==appid and app.get("instanceId"):
+                instance_id=app["instanceId"]
+                webprocess_id=proc.get("pid") or webprocess_id
+                break
+        if instance_id:
+            break
+if not instance_id:
+    raise SystemExit("overlay instanceId missing from listRunningApps and getWebProcessSize")
 desc=appinfo.get("appInfo")
 if not isinstance(desc,dict):
     raise SystemExit("overlay appInfo missing")
@@ -116,9 +130,11 @@ payload={
   "launchingAppId":"com.webos.app.home",
   "launchingProcId":"",
   "reason":"quick-start-probe",
-  "instanceId":item["instanceId"]
+  "instanceId":instance_id
 }
 print(json.dumps(payload,separators=(",",":")))
+print("WAM_INSTANCE_ID="+str(instance_id),file=sys.stderr)
+print("WAM_WEBPROCESS_ID="+str(webprocess_id or ""),file=sys.stderr)
 PY
 )"
 echo "WAM_PAYLOAD_READY=PASS"
