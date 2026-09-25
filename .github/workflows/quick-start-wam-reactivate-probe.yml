@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: resolve retained instance via getWebProcessSize
+# retry: capture retained instance via webProcessCreated
 
 jobs:
   probe:
