@@ -49,28 +49,33 @@ jobs:
           luna_json() {
             local uri="$1"
             local payload="$2"
-            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$uri' '$payload' 2>&1" | python3 -c '
-import json,sys
-text=sys.stdin.read()
-dec=json.JSONDecoder()
-found=None
-for line in reversed(text.splitlines()):
-    for i,ch in enumerate(line):
-        if ch != "{":
-            continue
-        try:
-            obj,_=dec.raw_decode(line[i:])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj,dict):
-            found=obj
-            break
-    if found is not None:
-        break
-if found is None:
-    raise SystemExit("no JSON response")
-print(json.dumps(found,separators=(",",":")))
-'
+            local out="$TMP/luna.txt"
+            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$uri' '$payload' 2>&1" >"$out"
+            python3 - "$out" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          decoder = json.JSONDecoder()
+          found = None
+          for line in reversed(text.splitlines()):
+              for index, char in enumerate(line):
+                  if char != "{":
+                      continue
+                  try:
+                      candidate, _ = decoder.raw_decode(line[index:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict):
+                      found = candidate
+                      break
+              if found is not None:
+                  break
+          if found is None:
+              raise SystemExit("no JSON response")
+          print(json.dumps(found, separators=(",", ":")))
+          PY
           }
 
           echo ROLLBACK_BASELINE=PASS
