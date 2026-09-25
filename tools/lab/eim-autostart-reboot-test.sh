@@ -4,8 +4,10 @@ set -euo pipefail
 TV_HOST=192.168.0.240
 TV=root@"$TV_HOST"
 SOURCE_KEY=/media/lgtv/id_rsa
-APP_ID=hu.szabi.launcher.eimprobe
-VERSION=0.0.1
+APP_ID="${APP_ID:-hu.szabi.launcher.eimprobe}"
+VERSION="${VERSION:-0.0.1}"
+PRODUCTION_MODE="${PRODUCTION_MODE:-0}"
+KEEP_EIM_ON_SUCCESS="${KEEP_EIM_ON_SUCCESS:-0}"
 ROLLBACK_MARKER=/media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
 RUN_TAG="${GITHUB_RUN_ID:-manual}"
 BACKUP_DIR="/media/lgtv/eim-autostart-backup-20260925-${RUN_TAG}"
@@ -16,7 +18,7 @@ mkdir -p "$BACKUP_DIR"
 TMP="$(mktemp -d)"
 KEY="$TMP/id_rsa"
 KNOWN="$TMP/known_hosts"
-REMOTE="/tmp/hu.szabi.eimprobe.$$"
+REMOTE="/tmp/hu.szabi.eim-autostart.$"
 MANIFEST="/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json"
 CLEANED=0
 REBOOT_SENT=0
@@ -155,7 +157,11 @@ sha256sum -c "$BACKUP_DIR/SHA256SUMS"
 echo "EIM_BACKUP=$BACKUP_DIR"
 echo EIM_BACKUP_VERIFY=PASS
 
-python3 tools/lab/build-eim-autostart-probe.py >"$TMP/build.txt"
+if [ "$PRODUCTION_MODE" = "1" ]; then
+  python3 scripts/build-all.py >"$TMP/build.txt"
+else
+  python3 tools/lab/build-eim-autostart-probe.py >"$TMP/build.txt"
+fi
 IPK="$GITHUB_WORKSPACE/build/${APP_ID}_${VERSION}_all.ipk"
 test -f "$IPK"
 DIGEST="$(sha256sum "$IPK" | awk '{print $1}')"
@@ -168,7 +174,11 @@ DIGEST="$(sha256sum "$IPK" | awk '{print $1}')"
 echo PROBE_INSTALL=PASS
 echo PROBE_SUPPORT_GIP=PASS
 
-ADD='{"appId":"hu.szabi.launcher.eimprobe","pigImage":"","mvpdIcon":"","showPopup":false,"label":"EIM boot probe","description":"One-shot controlled boot timing probe"}'
+if [ "$PRODUCTION_MODE" = "1" ]; then
+  ADD='{"appId":"hu.szabi.launcher","pigImage":"","mvpdIcon":"","showPopup":false,"label":"Saját kezdőképernyő","description":"Production EIM early launcher"}'
+else
+  ADD='{"appId":"hu.szabi.launcher.eimprobe","pigImage":"","mvpdIcon":"","showPopup":false,"label":"EIM boot probe","description":"One-shot controlled boot timing probe"}'
+fi
 luna_file add_device com.webos.service.eim/addDevice "$ADD"
 ADD_JSON="$(extract_json "$TMP/add_device.txt")"
 echo "EIM_ADD_DEVICE=$ADD_JSON"
@@ -176,7 +186,9 @@ echo "$ADD_JSON" | grep -q '"returnValue":true'
 echo EIM_REGISTER=PASS
 
 # Launch once so EIM can select the registered input app as the current/last input.
-luna_file launch_probe com.webos.service.applicationmanager/launch "{\"id\":\"$APP_ID\",\"params\":{\"source\":\"eim-probe-preflight\"}}"
+SOURCE="eim-probe-preflight"
+[ "$PRODUCTION_MODE" != "1" ] || SOURCE="eim-production-preflight"
+luna_file launch_probe com.webos.service.applicationmanager/launch "{\"id\":\"$APP_ID\",\"params\":{\"source\":\"$SOURCE\"}}"
 LAUNCH_JSON="$(extract_json "$TMP/launch_probe.txt")"
 echo "PROBE_PREFLIGHT_LAUNCH=$LAUNCH_JSON"
 echo "$LAUNCH_JSON" | grep -q '"returnValue":true'
