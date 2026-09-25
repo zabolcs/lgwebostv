@@ -56,7 +56,7 @@ jobs:
             local label="$1"
             local uri="$2"
             local payload="$3"
-            "${SSH[@]}" "luna-send -t 1 -f -w 2000 'luna://$uri' '$payload' 2>/dev/null" \
+            "${SSH[@]}" "luna-send -t 1 -f -w 2000 'luna://$uri' '$payload' 2>&1" \
               > "$TMP/$label.json"
           }
 
@@ -78,16 +78,19 @@ jobs:
               if not text:
                   raise SystemExit(f"{name}: empty response")
               data = None
+              decoder = json.JSONDecoder()
               for line in reversed(text.splitlines()):
-                  line = line.strip()
-                  if not line:
-                      continue
-                  try:
-                      candidate = json.loads(line)
-                  except json.JSONDecodeError:
-                      continue
-                  if isinstance(candidate, dict):
-                      data = candidate
+                  for index, char in enumerate(line):
+                      if char != "{":
+                          continue
+                      try:
+                          candidate, _ = decoder.raw_decode(line[index:])
+                      except json.JSONDecodeError:
+                          continue
+                      if isinstance(candidate, dict):
+                          data = candidate
+                          break
+                  if data is not None:
                       break
               if data is None:
                   raise SystemExit(f"{name}: no JSON object in response")
@@ -114,14 +117,20 @@ jobs:
           else:
               requirement_names = []
 
-          activities = activity.get("activities")
           activity_names = []
-          if isinstance(activities, list):
-              for item in activities:
-                  if isinstance(item, dict):
-                      name = item.get("name") or item.get("activityName")
-                      if name:
-                          activity_names.append(str(name))
+          queues = activity.get("queues")
+          if isinstance(queues, list):
+              for queue in queues:
+                  if not isinstance(queue, dict):
+                      continue
+                  activities = queue.get("activities")
+                  if not isinstance(activities, list):
+                      continue
+                  for item in activities:
+                      if isinstance(item, dict):
+                          name = item.get("name") or item.get("activityName")
+                          if name:
+                              activity_names.append(str(name))
 
           print(f"UPTIME_SECONDS={uptime:.3f}")
           print("ACTIVITY_MANAGER=PASS")
