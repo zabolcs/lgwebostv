@@ -87,8 +87,16 @@ echo "APPINFO_RAW=$APPINFO"
 echo "RUNNING_RAW=$RUNNING"
 PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
-appinfo=json.loads(sys.argv[1])
-running=json.loads(sys.argv[2])
+def timed_payload(raw):
+    marker="payload "
+    pos=raw.find(marker)
+    if pos >= 0:
+        raw=raw[pos+len(marker):]
+    raw=raw.lstrip()
+    value,_=json.JSONDecoder().raw_decode(raw)
+    return value
+appinfo=timed_payload(sys.argv[1])
+running=timed_payload(sys.argv[2])
 origin=sys.argv[3]; display=json.loads(sys.argv[4]); appid=sys.argv[5]
 item=next((x for x in running.get("running",[]) if x.get("id")==appid),None)
 if not item or not item.get("instanceId"):
