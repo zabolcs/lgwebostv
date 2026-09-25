@@ -248,6 +248,44 @@ else:
             self.assertEqual(calls[1]['payload']['params']['launcherHost'], 'full-overlay')
             self.assertEqual(calls[1]['payload']['preload'], 'full')
 
+    def test_cover_preload_targets_full_overlay_once_per_active_epoch(self):
+        with tempfile.TemporaryDirectory(prefix='lgtv-cover-preload-test-') as temporary:
+            root = Path(temporary)
+            for name, value in [('enabled', ''), ('home-mode', 'full'),
+                                ('hu.szabi.launcher.active-since', '2000'),
+                                ('hu.szabi.launcher.boot-ready', ''),
+                                ('memory', 'MemAvailable: 262144 kB\n')]:
+                (root/name).write_text(value)
+            fake=root/'luna-send'
+            fake.write_text('#!'+sys.executable+'\n'+'''
+import json,os,pathlib,sys
+r=pathlib.Path(os.environ['TV_TEST_ROOT']);uri=sys.argv[-2]
+if uri.endswith('/getPowerState'):
+ print('{"state":"Active"}')
+elif uri.endswith('/getForegroundAppInfo'):
+ print('{"appId":"hu.szabi.launcher"}')
+elif uri.endswith('/listRunningApps'):
+ print(json.dumps({'running':[]}))
+else:
+ with (r/'launches').open('a') as f: f.write(json.dumps(json.loads(sys.argv[-1]))+'\\n')
+ print('{"returnValue":true}')
+''')
+            fake.chmod(0o755)
+            (root/'luna-send-pub').symlink_to(fake)
+            text=server.LauncherHomeManager.PREWARM_SCRIPT.replace('/var/lib/webosbrew/launcher-home',str(root))
+            text=text.replace('/tmp/hu.szabi.',str(root)+'/hu.szabi.').replace('/proc/meminfo',str(root/'memory'))
+            script=root/'prewarm.sh';script.write_text(text)
+            env=dict(os.environ,TV_TEST_ROOT=str(root),PATH=str(root)+os.pathsep+os.environ['PATH'])
+            subprocess.run(['/bin/sh',str(script),'cover'],env=env,check=True,capture_output=True,timeout=5)
+            subprocess.run(['/bin/sh',str(script),'cover'],env=env,check=True,capture_output=True,timeout=5)
+            calls=[json.loads(x) for x in (root/'launches').read_text().splitlines()]
+            self.assertEqual(len(calls),1)
+            self.assertEqual(calls[0]['id'],server.LAUNCHER_OVERLAY_APP_ID)
+            self.assertEqual(calls[0]['preload'],'full')
+            self.assertTrue(calls[0]['keepAlive'])
+            self.assertEqual(calls[0]['params']['source'],'preload')
+            self.assertEqual(calls[0]['params']['launcherHost'],'full-overlay')
+
     def test_quick_preload_is_native_hidden_once_per_wake_and_respects_power_memory(self):
         with tempfile.TemporaryDirectory(prefix='lgtv-quick-preload-test-') as temporary:
             root = Path(temporary)
@@ -344,6 +382,9 @@ elif uri.endswith("/getPowerState"):
 elif uri.endswith("/getBootStatus"):
     status = root / "boot-status"
     print(status.read_text() if status.exists() else json.dumps({"powerStatus":"active", "signals":{"boot-done":not (root / "boot-pending").exists()}}))
+elif uri.endswith("/listRunningApps"):
+    running = [{"id":"hu.szabi.launcher.overlay"}] if (root / "cover-running").exists() else []
+    print(json.dumps({"running":running}))
 elif uri.endswith("/launch"):
     print(json.dumps({"returnValue":not (root / "reject-launch").exists()}))
 else:
@@ -409,7 +450,7 @@ handle_power_state Active
     def test_quick_start_fast_lane_uses_prewarmed_cover_before_full_launcher(self):
         calls, _ = self.exercise_wake_guard('''
 quick_fast_lane_safe() { return 0; }
-touch "$QUICK_COVER_READY"
+touch "$QUICK_COVER_READY" "$DIR/cover-running"
 echo Active >"$POWER_STATE"
 echo Active >"$DIR/current-power"
 handle_power_state 'Active Standby'
