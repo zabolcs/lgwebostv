@@ -63,19 +63,8 @@ cleanup() {
 trap cleanup EXIT
 
 "${SSH[@]}" true
-stop_guard
-echo GUARD_STOPPED_FOR_INSTANCE_CAPTURE=PASS
 "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
-"${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.service.webappmanager/killApp '{\"appId\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
-for _ in $(seq 1 30); do
-  if ! node tools/lab/measure-launcher-cdp.mjs "$OVERLAY" >/dev/null 2>&1; then break; fi
-  sleep 0.1
-done
-if node tools/lab/measure-launcher-cdp.mjs "$OVERLAY" >/dev/null 2>&1; then
-  echo "overlay renderer survived killApp" >&2
-  exit 1
-fi
-echo OVERLAY_RENDERER_KILLED=PASS
+sleep 0.5
 "${SSH[@]}" "rm -f '$WAM_EVENT_FILE' '$WAM_EVENT_PID'; nohup luna-send -i luna://com.webos.service.webappmanager/webProcessCreated '{\"subscribe\":true}' >'$WAM_EVENT_FILE' 2>&1 </dev/null & echo \$! >'$WAM_EVENT_PID'"
 sleep 0.3
 echo WAM_PROCESS_SUBSCRIPTION=PASS
@@ -108,11 +97,13 @@ APPINFO="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.applicationMa
 RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
 PROCESSES="$("${SSH[@]}" "luna-send -t 1 -f -w 2000 luna://com.webos.service.webappmanager/getWebProcessSize '{}'" 2>&1)"
 EVENTS="$("${SSH[@]}" "cat '$WAM_EVENT_FILE' 2>/dev/null || true")"
+LOGS="$("${SSH[@]}" "grep -a -h -i '$OVERLAY' /var/log/messages* /var/log/legacy-log* 2>/dev/null | tail -200" || true)"
 echo "APPINFO_RAW=$APPINFO"
 echo "RUNNING_RAW=$RUNNING"
 echo "PROCESSES_RAW=$PROCESSES"
 echo "WAM_PROCESS_EVENTS_RAW=$EVENTS"
-PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$EVENTS" "$origin" "$display" "$OVERLAY" <<'PY'
+echo "OVERLAY_LOGS_RAW=$LOGS"
+PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$PROCESSES" "$EVENTS" "$LOGS" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
 def timed_payload(raw):
     marker="payload "
@@ -126,7 +117,8 @@ appinfo=timed_payload(sys.argv[1])
 running=timed_payload(sys.argv[2])
 processes=timed_payload(sys.argv[3])
 events_raw=sys.argv[4]
-origin=sys.argv[5]; display=json.loads(sys.argv[6]); appid=sys.argv[7]
+logs_raw=sys.argv[5]
+origin=sys.argv[6]; display=json.loads(sys.argv[7]); appid=sys.argv[8]
 item=next((x for x in running.get("running",[]) if x.get("id")==appid),None)
 instance_id=(item or {}).get("instanceId")
 webprocess_id=(item or {}).get("webprocessid")
@@ -155,7 +147,25 @@ if not instance_id:
         if instance_id:
             break
 if not instance_id:
-    raise SystemExit("overlay instanceId missing from WAM webProcessCreated/listRunningApps/getWebProcessSize")
+    import re
+    patterns=[
+        r'"instanceId"\s*:\s*"([^"]+)"',
+        r'"INSTANCE_ID"\s*:\s*"([^"]+)"',
+        r'INSTANCE_ID[^A-Za-z0-9._:-]+([A-Za-z0-9._:-]{8,})',
+        r'instanceId[^A-Za-z0-9._:-]+([A-Za-z0-9._:-]{8,})'
+    ]
+    for line in reversed(logs_raw.splitlines()):
+        if appid not in line:
+            continue
+        for pattern in patterns:
+            m=re.search(pattern,line)
+            if m:
+                instance_id=m.group(1)
+                break
+        if instance_id:
+            break
+if not instance_id:
+    raise SystemExit("overlay instanceId missing from WAM events/running/process data and TV logs")
 desc=appinfo.get("appInfo")
 if not isinstance(desc,dict):
     raise SystemExit("overlay appInfo missing")
@@ -183,7 +193,8 @@ echo "WAM_PAYLOAD_READY=PASS"
 
 "${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-reactivate-probe\"}}' >/dev/null"
 sleep 1
-echo GUARD_ALREADY_STOPPED=PASS
+stop_guard
+echo GUARD_STOPPED=PASS
 PRE_LINES="$("${SSH[@]}" "wc -l </var/log/messages 2>/dev/null || echo 0")"
 START_MS="$(date +%s%3N)"
 RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 2500 luna://com.webos.service.webappmanager/launchApp '$PAYLOAD' 2>&1")"
