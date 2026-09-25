@@ -200,6 +200,11 @@ jobs:
           echo '=== HDMI BOUNCE TIMING ==='
           "${SSH[@]}" "grep -n -E 'com\.webos\.app\.hdmi2|NL_APP_LAUNCH_BEGIN|NL_VSC' /var/log/messages 2>/dev/null | tail -160 || true"
 
+          echo '=== QUICK START PROTECTED BASELINE ==='
+          "${SSH[@]}" "sha256sum /var/lib/webosbrew/launcher-home/guard.sh 2>/dev/null || true"
+          "${SSH[@]}" "grep -n 'guard v0.4.0' /var/lib/webosbrew/launcher-home/guard.sh 2>/dev/null || true"
+          "${SSH[@]}" "echo ---eim-overlay---; findmnt /var/lib/eim 2>/dev/null || true; findmnt /var/lib/webosbrew/launcher-eim/frozen-view 2>/dev/null || true; ls -l /var/lib/webosbrew/launcher-eim/last-good /var/lib/webosbrew/launcher-eim/boot-pending /var/lib/webosbrew/launcher-eim/disabled-failsafe 2>/dev/null || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
