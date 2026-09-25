@@ -123,3 +123,36 @@ Quick Start / standby wake
 
 A power-cycle és overlay-install workflow-k push eseményen job-szinten le vannak
 tiltva; csak explicit `workflow_dispatch` indíthatja a TV-t érintő műveletet.
+
+
+### Quick Start fast lane
+
+A TV-local guard v0.3.9 egy külön, egyszeri Quick Start fast lane-t használ.
+Csak akkor aktiválódik, ha a TV már futó sessionből tényleges natív
+`Active Standby` állapotba ment, majd visszatér `Active` állapotba. Cold boot,
+egyszerű `unknown` power-state ingadozás és screensaver kilépés nem armolja.
+
+A fast lane feltételei:
+
+- egészséges, `last-good` EIM overlay;
+- nincs `boot-pending` vagy failsafe tiltás;
+- friss `Active` power-state közvetlenül a launch előtt;
+- wake-enként legfeljebb egy fast-lane dispatch.
+
+Sikertelen vagy túl korai fast dispatch esetén a korábbi konzervatív TV-local guard
+és a NAS SSAP fallback változatlanul tovább működik.
+
+Mérés: GitHub Actions run `36179577293`.
+
+- korábbi Quick Start foreground: **14.863 s**
+- fast lane foreground: **11.975 s**
+- javulás: kb. **2.9 s**
+- `quick fast lane dispatch`: PASS
+- `quick fast lane accepted`: PASS
+- uptime continuity: PASS
+- EIM overlay persisted: PASS
+
+A teszt szándékosan HDMI2-ről indult. A webOS a wake során visszaállította a HDMI2-t,
+majd kb. 1 másodperccel később a fast lane már elküldte a launcher launchot. A
+launcher tényleges surface-e csak később vált láthatóvá; innentől a fő késleltetés
+már nem a power-state guard, hanem a full webapp/WAM surface aktiválási ideje.
