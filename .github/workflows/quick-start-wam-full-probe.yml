@@ -1,0 +1,31 @@
+name: Quick Start direct WAM full-launcher probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/quick-start-wam-full-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/quick-start-wam-full-probe.sh
+          node --check tools/lab/measure-launcher-cdp.mjs
+      - name: Measure retained full launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/quick-start-wam-full-probe.sh
