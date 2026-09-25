@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.4.9 guard: 450ms Active cover probe with unchanged v0.4.0 fallback.
+# v0.5.0 guard: Prepare Resume private-WAM cover plus unchanged v0.4.0 fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -23,8 +23,9 @@ QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
 QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
 QUICK_COVER_QUEUE=/tmp/hu.szabi.launcher.quick-cover-prewarm-queued
-QUICK_DELAYED_ATTEMPT=/tmp/hu.szabi.launcher.quick-delayed-attempt
-QUICK_DELAYED_ACCEPTED=/tmp/hu.szabi.launcher.quick-delayed-accepted
+QUICK_WAM_PAYLOAD=/tmp/hu.szabi.launcher.quick-wam-cover.json
+QUICK_WAM_ATTEMPT=/tmp/hu.szabi.launcher.quick-wam-attempt
+QUICK_WAM_ACCEPTED=/tmp/hu.szabi.launcher.quick-wam-accepted
 EIM_BASE=/var/lib/webosbrew/launcher-eim
 WAKE_VISIBLE_APP=/tmp/hu.szabi.launcher.wake-visible-app
 WAKE_VISIBLE_SINCE=/tmp/hu.szabi.launcher.wake-visible-since
@@ -125,7 +126,7 @@ arm_power_startup() {
 
 settle_wake() {
   diagnostic "wake $1 foreground=$current"
-  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_DELAYED_ATTEMPT" "$QUICK_DELAYED_ACCEPTED"
+  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$POWER_OFF_APP" "$WAKE_VISIBLE_APP" "$WAKE_VISIBLE_SINCE" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_WAM_ATTEMPT" "$QUICK_WAM_ACCEPTED"
 }
 
 wake_window_open() {
@@ -167,28 +168,79 @@ quick_fast_lane_safe() {
   return 0
 }
 
-delayed_active_cover_worker() {
-  /bin/usleep 450000
-  [ -f "$QUICK_WAKE_ARMED" ] || { rm -f "$QUICK_DELAYED_ATTEMPT"; return 1; }
-  [ -f "$QUICK_COVER_READY" ] || { rm -f "$QUICK_DELAYED_ATTEMPT"; return 1; }
-  [ ! -f "$HOME_ACTIVE" ] || { rm -f "$QUICK_DELAYED_ATTEMPT"; return 1; }
-  if ! quick_fast_lane_safe; then
-    rm -f "$QUICK_DELAYED_ATTEMPT"
-    diagnostic 'delayed Active cover blocked: EIM overlay not healthy'
+prepare_wam_cover_payload() {
+  [ -f "$QUICK_COVER_READY" ] || { rm -f "$QUICK_WAM_PAYLOAD"; return 1; }
+  [ ! -s "$QUICK_WAM_PAYLOAD" ] || return 0
+  quick_fast_lane_safe || return 1
+
+  running=$(luna-send -n 1 -f -w 1200 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>/dev/null)
+  if ! echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
+    rm -f "$QUICK_COVER_READY" "$QUICK_WAM_PAYLOAD"
     return 1
   fi
+
+  raw="$QUICK_WAM_PAYLOAD.appinfo"
+  next="$QUICK_WAM_PAYLOAD.new"
+  luna-send -n 1 -f -w 1200 luna://com.webos.applicationManager/getAppInfo '{"id":"hu.szabi.launcher.overlay"}' >"$raw" 2>/dev/null || {
+    rm -f "$raw" "$next"
+    return 1
+  }
   origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
-  payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-active-450ms","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
-  diagnostic 'delayed Active cover dispatch'
-  result=$(luna-send-pub -w 800 -t 1 -f luna://com.webos.applicationManager/launch "$payload" 2>&1)
+  python - "$raw" "$origin" "$display" "$OVERLAY_APP" "$next" <<'PY'
+import json, sys
+raw = open(sys.argv[1], 'rb').read().decode('utf-8', 'replace')
+start = raw.find('{')
+if start < 0:
+    raise SystemExit(1)
+obj = json.JSONDecoder().raw_decode(raw[start:])[0]
+desc = obj.get('appInfo')
+if not isinstance(desc, dict):
+    raise SystemExit(1)
+payload = {
+    'appDesc': desc,
+    'appId': sys.argv[4],
+    'parameters': {
+        'source': 'quick-start-wam-prepare-resume',
+        'launcherHost': 'full-overlay',
+        'controlOrigin': sys.argv[2],
+        'displayPreferences': json.loads(sys.argv[3])
+    },
+    'launchingAppId': 'com.webos.app.home',
+    'launchingProcId': '',
+    'reason': 'quick-start'
+}
+open(sys.argv[5], 'wb').write(json.dumps(payload, separators=(',', ':')).encode('utf-8'))
+PY
+  rc=$?
+  rm -f "$raw"
+  if [ "$rc" -ne 0 ] || [ ! -s "$next" ]; then
+    rm -f "$next"
+    return 1
+  fi
+  mv -f "$next" "$QUICK_WAM_PAYLOAD"
+  diagnostic 'private WAM cover payload ready'
+  return 0
+}
+
+prepare_resume_wam_cover_worker() {
+  [ -f "$QUICK_WAKE_ARMED" ] || { rm -f "$QUICK_WAM_ATTEMPT"; return 1; }
+  [ -f "$QUICK_COVER_READY" ] || { rm -f "$QUICK_WAM_ATTEMPT"; return 1; }
+  [ -s "$QUICK_WAM_PAYLOAD" ] || { rm -f "$QUICK_WAM_ATTEMPT"; return 1; }
+  [ ! -f "$HOME_ACTIVE" ] || { rm -f "$QUICK_WAM_ATTEMPT"; return 1; }
+  quick_fast_lane_safe || { rm -f "$QUICK_WAM_ATTEMPT"; return 1; }
+
+  payload=$(cat "$QUICK_WAM_PAYLOAD" 2>/dev/null)
+  [ -n "$payload" ] || { rm -f "$QUICK_WAM_ATTEMPT"; return 1; }
+  diagnostic 'private WAM Prepare Resume cover dispatch'
+  result=$(luna-send -n 1 -f -w 350 luna://com.webos.service.webappmanager/launchApp "$payload" 2>&1)
   if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
-    touch "$QUICK_DELAYED_ACCEPTED"
-    diagnostic 'delayed Active cover accepted'
+    touch "$QUICK_WAM_ACCEPTED"
+    diagnostic 'private WAM Prepare Resume cover accepted'
     return 0
   fi
-  rm -f "$QUICK_DELAYED_ATTEMPT"
-  diagnostic 'delayed Active cover failed; v0.4.0 fallback remains armed'
+  rm -f "$QUICK_WAM_ATTEMPT"
+  diagnostic 'private WAM Prepare Resume cover failed; v0.4.0 fallback remains armed'
   return 1
 }
 
@@ -216,15 +268,7 @@ quick_start_fast_launch() {
   origin=$(cat "$CONTROL_ORIGIN" 2>/dev/null)
   display=$(cat "$DIR/display-preferences.json" 2>/dev/null); [ -n "$display" ] || display='{}'
 
-  if [ -f "$QUICK_DELAYED_ATTEMPT" ] && [ ! -f "$QUICK_DELAYED_ACCEPTED" ]; then
-    i=0
-    while [ "$i" -lt 4 ] && [ -f "$QUICK_DELAYED_ATTEMPT" ] && [ ! -f "$QUICK_DELAYED_ACCEPTED" ]; do
-      /bin/usleep 50000
-      i=$((i + 1))
-    done
-  fi
-
-  if [ -f "$QUICK_COVER_READY" ] && [ ! -f "$QUICK_DELAYED_ACCEPTED" ]; then
+  if [ -f "$QUICK_COVER_READY" ] && [ ! -f "$QUICK_WAM_ACCEPTED" ]; then
     running=$(luna-send -t 1 -f -w 900 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>&1)
     if echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
       cover_payload=$(printf '{"id":"%s","noSplash":true,"params":{"source":"quick-start-cover","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY_APP" "$origin" "$display")
@@ -272,12 +316,12 @@ handle_power_state() {
       fi
       ;;
     'Screen Saver')
-      rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_DELAYED_ATTEMPT" "$QUICK_DELAYED_ACCEPTED"
+      rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_WAM_ATTEMPT" "$QUICK_WAM_ACCEPTED"
       ;;
     'Active Standby'|Suspend|'Screen Off')
       [ "$previous" = Active ] && snapshot_power_off_app
       touch "$QUICK_WAKE_ARMED"
-      rm -f "$QUICK_FAST_ATTEMPT" "$QUICK_DELAYED_ATTEMPT" "$QUICK_DELAYED_ACCEPTED" "$BOOT_READY" "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
+      rm -f "$QUICK_FAST_ATTEMPT" "$QUICK_WAM_ATTEMPT" "$QUICK_WAM_ACCEPTED" "$BOOT_READY" "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
       ;;
     *)
       [ "$previous" = Active ] && snapshot_power_off_app
@@ -514,6 +558,9 @@ queue_prewarm() {
   [ "$(cat "$POWER_STATE" 2>/dev/null)" = Active ] || return 0
   [ ! -f "$HOME_ACTIVE" ] || return 0
   epoch=$(cat "$ACTIVE_SINCE" 2>/dev/null)
+  if [ -f "$QUICK_COVER_READY" ] && [ ! -s "$QUICK_WAM_PAYLOAD" ]; then
+    prepare_wam_cover_payload || true
+  fi
   if [ -n "$epoch" ] && [ ! -f "$QUICK_COVER_READY" ]; then
     if [ "$(cat "$QUICK_COVER_QUEUE" 2>/dev/null)" = "$epoch" ]; then
       # The cover preload is still pending (or failed). Do not start another
@@ -561,17 +608,19 @@ power_loop() {
   while [ -f "$ENABLED" ]; do
     luna-send -i luna://com.webos.service.tvpower/power/getPowerState '{"subscribe":true}' 2>/dev/null |
     while IFS= read -r line; do
+      processing=$(json_value "$line" processing)
+      if [ "$processing" = 'Prepare Resume' ] &&
+         [ -f "$QUICK_WAKE_ARMED" ] && [ -f "$QUICK_COVER_READY" ] &&
+         [ -s "$QUICK_WAM_PAYLOAD" ] && [ ! -f "$QUICK_WAM_ATTEMPT" ] &&
+         [ ! -f "$QUICK_WAM_ACCEPTED" ]; then
+        touch "$QUICK_WAM_ATTEMPT"
+        prepare_resume_wam_cover_worker 9>&- &
+      fi
       state=$(json_value "$line" state)
       [ -n "$state" ] || continue
       # Never wait on another Luna call here: Suspend must invalidate a launch
       # even while the single worker is blocked in a foreground/boot query.
       case "$state" in Active|'Screen Saver') ;; *) touch "$WAKE_SIGNAL";; esac
-      if [ "$state" = Active ] && [ -f "$QUICK_WAKE_ARMED" ] &&
-         [ -f "$QUICK_COVER_READY" ] && [ ! -f "$QUICK_DELAYED_ATTEMPT" ] &&
-         [ ! -f "$QUICK_DELAYED_ACCEPTED" ]; then
-        touch "$QUICK_DELAYED_ATTEMPT"
-        delayed_active_cover_worker 9>&- &
-      fi
       printf '%s\n' "$state" >"$POWER_EVENT.new"
       mv -f "$POWER_EVENT.new" "$POWER_EVENT"
     done
@@ -643,11 +692,11 @@ run_pending_tick() {
 }
 
 # START WORKER (test fixtures source only the functions above).
-rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_DELAYED_ATTEMPT" "$QUICK_DELAYED_ACCEPTED"
+rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT" "$QUICK_WAM_PAYLOAD" "$QUICK_WAM_ATTEMPT" "$QUICK_WAM_ACCEPTED"
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.4.9 started'
+diagnostic 'guard v0.5.0 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
