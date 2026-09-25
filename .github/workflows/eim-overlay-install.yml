@@ -10,6 +10,8 @@ on:
 permissions:
   contents: read
 
+# trigger: ordered failsafe overlay install
+
 jobs:
   install:
     runs-on: [self-hosted, Linux, X64]
