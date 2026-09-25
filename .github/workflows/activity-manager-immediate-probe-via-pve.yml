@@ -158,11 +158,7 @@ jobs:
                       try: luna(tv,SERVICE+'/cancel',{'manager':manager,'activityId':activity_id})
                       except Exception as e: print('CANCEL_WARNING='+str(e)[:180])
                   if installed:
-                      try:
-                          payload=json.dumps({'id':APP,'subscribe':True},separators=(',',':'))
-                          run(tv="/usr/bin/false")
-                      except TypeError:
-                          pass
+                      payload=json.dumps({'id':APP,'subscribe':True},separators=(',',':'))
                       try:
                           run(tv,"/usr/bin/luna-send-pub -t 1 -w 30000 -f 'luna://com.webos.appInstallService/dev/remove' "+shlex.quote(payload),45)
                           for _ in range(40):
