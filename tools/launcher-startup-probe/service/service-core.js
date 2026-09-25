@@ -51,8 +51,30 @@ function bootupCreateRequest() {
   };
 }
 
+function firstAppLaunchedCreateRequest() {
+  return {
+    activity: {
+      name: SERVICE_ID + '.firstAppLaunched',
+      description: 'Persistent first-app-launched callback timing probe',
+      type: {foreground: true, persist: true, continuous: true},
+      trigger: {
+        method: 'luna://com.webos.bootManager/getBootStatus',
+        params: {subscribe: true},
+        where: {prop: 'firstAppLaunched', op: '=', val: true}
+      },
+      callback: {
+        method: 'luna://' + SERVICE_ID + '/probe',
+        params: {kind: 'firstAppLaunched'}
+      }
+    },
+    replace: true,
+    start: true,
+    subscribe: false
+  };
+}
+
 function normalizeKind(value) {
-  return value === 'immediate' || value === 'bootup' ? value : null;
+  return value === 'immediate' || value === 'bootup' || value === 'firstAppLaunched' ? value : null;
 }
 
 function positiveActivityId(value) {
@@ -86,6 +108,7 @@ module.exports = {
   managerUri: managerUri,
   immediateCreateRequest: immediateCreateRequest,
   bootupCreateRequest: bootupCreateRequest,
+  firstAppLaunchedCreateRequest: firstAppLaunchedCreateRequest,
   normalizeKind: normalizeKind,
   positiveActivityId: positiveActivityId,
   publicResult: publicResult
