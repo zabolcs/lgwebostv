@@ -43,8 +43,45 @@ jobs:
 
           "${SSH[@]}" 'command -v luna-send >/dev/null'
           echo TV_SSH=PASS
-          POWER=$("${SSH[@]}" "luna-send -t 1 -f -w 3000 'luna://com.webos.service.tvpower/power/getPowerState' '{}'" || true)
-          echo "POWER_RAW=$POWER"
+
+          luna_file() {
+            local label="$1"
+            local uri="$2"
+            local payload="$3"
+            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$uri' '$payload' 2>&1" \
+              > "$TMP/$label.txt"
+          }
+
+          extract_json() {
+            python3 - "$1" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          decoder = json.JSONDecoder()
+          found = None
+          for line in reversed(text.splitlines()):
+              for index, char in enumerate(line):
+                  if char != "{":
+                      continue
+                  try:
+                      candidate, _ = decoder.raw_decode(line[index:])
+                  except json.JSONDecodeError:
+                      continue
+                  if isinstance(candidate, dict):
+                      found = candidate
+                      break
+              if found is not None:
+                  break
+          if found is None:
+              raise SystemExit("no JSON response")
+          print(json.dumps(found, separators=(",", ":")))
+          PY
+          }
+          luna_file power com.webos.service.tvpower/power/getPowerState '{}' || true
+          POWER_JSON="$(extract_json "$TMP/power.txt" 2>/dev/null || true)"
+          echo "POWER_JSON=$POWER_JSON"
           echo POWER_CHECK=DIAGNOSTIC_ONLY
 
           python3 tools/lab/build-launcher-startup-probe.py >"$TMP/build.txt"
@@ -59,24 +96,28 @@ jobs:
           echo PROBE_INSTALL=PASS
 
           # First call activates the dynamic service on this firmware.
-          STATUS=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
+          luna_file status_before "$SERVICE_ID/status" '{}' || true
+          STATUS="$(extract_json "$TMP/status_before.txt" 2>/dev/null || true)"
           if ! echo "$STATUS" | grep -q '"returnValue":true'; then
             "${SSH[@]}" "/usr/bin/run-js-service -n '/media/developer/apps/usr/palm/services/$SERVICE_ID' >/tmp/startupprobe-activate.log 2>&1 &" || true
             sleep 2
-            STATUS=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$SERVICE_ID/status' '{}'" || true)
+            luna_file status_before_retry "$SERVICE_ID/status" '{}' || true
+            STATUS="$(extract_json "$TMP/status_before_retry.txt" 2>/dev/null || true)"
           fi
           echo "STATUS_BEFORE=$STATUS"
           echo "$STATUS" | grep -q '"returnValue":true'
           echo SERVICE_STATUS=PASS
 
-          ARM=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://$SERVICE_ID/armBootup' '{\"manager\":\"palm\"}'" || true)
+          luna_file arm_bootup "$SERVICE_ID/armBootup" '{"manager":"palm"}'
+          ARM="$(extract_json "$TMP/arm_bootup.txt")"
           echo "ARM_BOOTUP=$ARM"
           echo "$ARM" | grep -q '"returnValue":true'
-          ACTIVITY_ID=$(printf '%s' "$ARM" | sed -n 's/.*"activityId":\([0-9][0-9]*\).*/\1/p' | head -1)
+          ACTIVITY_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("activityId",""))' "$ARM")"
           test -n "$ACTIVITY_ID"
           echo "BOOTUP_ACTIVITY_ID=$ACTIVITY_ID"
 
-          INFO=$("${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":$ACTIVITY_ID}'" || true)
+          luna_file activity_details com.palm.activitymanager/getDetails "{\"activityId\":$ACTIVITY_ID}"
+          INFO="$(extract_json "$TMP/activity_details.txt")"
           echo "BOOTUP_ACTIVITY_DETAILS=$INFO"
           echo "$INFO" | grep -q '"returnValue":true'
           echo "$INFO" | grep -q '"bootup"'
