@@ -11,6 +11,7 @@ permissions:
   contents: read
 
 # trigger: ordered failsafe overlay install
+# trigger: robust confirm persistent install
 
 jobs:
   install:
