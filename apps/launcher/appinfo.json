@@ -1,6 +1,6 @@
 {
   "id": "hu.szabi.launcher",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "vendor": "Szabolcs",
   "type": "web",
   "main": "index.html",
@@ -15,5 +15,6 @@
   "spinnerOnLaunch": false,
   "disableBackHistoryAPI": true,
   "resolution": "1920x1080",
-  "requiredMemory": 64
+  "requiredMemory": 64,
+  "supportGIP": true
 }
