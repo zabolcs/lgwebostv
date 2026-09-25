@@ -17,6 +17,7 @@
   "resolution": "1920x1080",
   "requiredMemory": 64,
   "requiredACG": [
-    "activity.operation"
+    "activity.operation",
+    "boot.query"
   ]
 }
