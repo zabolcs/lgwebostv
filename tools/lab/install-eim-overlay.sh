@@ -5,7 +5,8 @@ TV_HOST=192.168.0.240
 TV=root@"$TV_HOST"
 SOURCE_KEY=/media/lgtv/id_rsa
 BASE=/var/lib/webosbrew/launcher-eim
-HOOK=/var/lib/webosbrew/init.d/launcher-eim-overlay
+HOOK=/var/lib/webosbrew/init.d/10-launcher-eim-overlay
+LEGACY_HOOK=/var/lib/webosbrew/init.d/launcher-eim-overlay
 RUN_TAG="${GITHUB_RUN_ID:-manual}"
 BACKUP="/media/lgtv/eim-overlay-backup-20260925-${RUN_TAG}"
 
@@ -68,7 +69,7 @@ printf '{"type":"%s","appId":"%s","physicalLastSourceId":"%s","physicalLastSourc
 "${SCP[@]}" "$TMP/lastinput" "$TV:$BASE/runtime.new/lastinput"
 "${SSH[@]}" "chmod 644 '$BASE/runtime.new/lastinput'; rm -rf '$BASE/runtime'; mv '$BASE/runtime.new' '$BASE/runtime'"
 "${SCP[@]}" tools/generated-tv-scripts/launcher-eim-overlay "$TV:$HOOK"
-"${SSH[@]}" "chmod 755 '$HOOK'; sh -n '$HOOK'; rm -f '$BASE/boot-pending' '$BASE/disabled-failsafe' '$BASE/last-good'; touch '$BASE/enabled'; sync"
+"${SSH[@]}" "chmod 755 '$HOOK'; sh -n '$HOOK'; rm -f '$LEGACY_HOOK' '$BASE/boot-pending' '$BASE/disabled-failsafe' '$BASE/last-good'; touch '$BASE/enabled'; sync"
 
 echo "OVERLAY_BACKUP=$BACKUP"
 echo EIM_OVERLAY_INSTALLED_NO_REBOOT=PASS
