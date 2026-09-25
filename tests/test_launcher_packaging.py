@@ -156,7 +156,7 @@ class LauncherPackagingTests(unittest.TestCase):
             manifest = json.loads(files[app_root + "appinfo.json"])
 
             self.assertEqual(package["app"], app_id)
-            self.assertEqual(package["services"], [])
+            self.assertNotIn("services", package)
             self.assertEqual(manifest["version"], "0.0.1")
             self.assertTrue(manifest["supportGIP"])
             self.assertEqual(manifest["type"], "web")
