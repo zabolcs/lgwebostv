@@ -63,8 +63,19 @@ cleanup() {
 trap cleanup EXIT
 
 "${SSH[@]}" true
+stop_guard
+echo GUARD_STOPPED_FOR_INSTANCE_CAPTURE=PASS
 "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
-sleep 1
+"${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.service.webappmanager/killApp '{\"appId\":\"$OVERLAY\",\"reason\":\"wam-reactivate-instance-capture\"}' >/dev/null 2>&1 || true"
+for _ in $(seq 1 30); do
+  if ! node tools/lab/measure-launcher-cdp.mjs "$OVERLAY" >/dev/null 2>&1; then break; fi
+  sleep 0.1
+done
+if node tools/lab/measure-launcher-cdp.mjs "$OVERLAY" >/dev/null 2>&1; then
+  echo "overlay renderer survived killApp" >&2
+  exit 1
+fi
+echo OVERLAY_RENDERER_KILLED=PASS
 "${SSH[@]}" "rm -f '$WAM_EVENT_FILE' '$WAM_EVENT_PID'; nohup luna-send -i luna://com.webos.service.webappmanager/webProcessCreated '{\"subscribe\":true}' >'$WAM_EVENT_FILE' 2>&1 </dev/null & echo \$! >'$WAM_EVENT_PID'"
 sleep 0.3
 echo WAM_PROCESS_SUBSCRIPTION=PASS
@@ -172,8 +183,7 @@ echo "WAM_PAYLOAD_READY=PASS"
 
 "${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-reactivate-probe\"}}' >/dev/null"
 sleep 1
-stop_guard
-echo GUARD_STOPPED=PASS
+echo GUARD_ALREADY_STOPPED=PASS
 PRE_LINES="$("${SSH[@]}" "wc -l </var/log/messages 2>/dev/null || echo 0")"
 START_MS="$(date +%s%3N)"
 RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 2500 luna://com.webos.service.webappmanager/launchApp '$PAYLOAD' 2>&1")"
