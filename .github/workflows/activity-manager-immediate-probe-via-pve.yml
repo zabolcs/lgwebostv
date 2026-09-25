@@ -51,7 +51,8 @@ jobs:
           helpers=sorted(ROOT.rglob('remote.py'), key=lambda p:(len(p.parts),str(p)))
           if not helpers:
               raise SystemExit('private remote helper not found')
-          helper=helpers[0]
+          preferred=[p for p in helpers if 'source/history/checkpoint-original/LGTV-checkpoint-2026-09-19/tools/remote.py' in str(p)]
+          helper=preferred[0] if preferred else helpers[0]
           # The archived helper prepends its own old vendored Python tree.
           # Execute it without those sys.path mutations so this job uses the
           # isolated, pinned Paramiko installed above.
