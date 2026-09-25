@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# retry: inspect developer running API for retained instance
+# retry: force fresh WAM instance and capture process-created instanceId
 
 jobs:
   probe:
