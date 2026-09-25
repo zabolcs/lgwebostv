@@ -136,7 +136,7 @@ class LauncherPackagingTests(unittest.TestCase):
 
             self.assertEqual(package["app"], app_id)
             self.assertEqual(package["services"], [service_id])
-            self.assertEqual(manifest["version"], "0.0.2")
+            self.assertEqual(manifest["version"], "0.0.3")
             self.assertIn("activity.operation", manifest["requiredACG"])
             for filename in ("package.json", "services.json", "service-core.js", "service.js"):
                 self.assertIn(service_root + filename, files)
