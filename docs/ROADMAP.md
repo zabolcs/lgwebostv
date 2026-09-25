@@ -14,7 +14,7 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
   - Remote Mapper: 0.2.0
 - Shared launcher source lives under `apps/launcher/`; full, quick and overlay must not fork into separate UI implementations.
 - `launcher-runtime.js` is a build artifact generated in memory by `scripts/build-all.py`; it is intentionally not source-controlled.
-- The handoff describes `remote-broker/` as canonical source. The 2026-09-25 GitHub export accidentally omitted the whole directory while trying to exclude the same-named compiled `remote-broker` binary. The canonical C source exists in the private/full checkpoint and is being restored. Do not reconstruct it from inference; broker work remains blocked until the verified source is re-imported and its contract test passes.
+- The handoff describes `remote-broker/` as canonical source. The original 2026-09-25 GitHub export accidentally omitted that directory while excluding the same-named compiled `remote-broker` binary. A follow-up source-completeness audit found the canonical C source intact in the original project/private checkpoint and also found 33 omitted development/diagnostic helper scripts plus seven generated TV-script reference copies. The corrected export contains 237 source files; GitHub replacement/import is still pending.
 - Exact live restore material, credentials, compiled production binaries, logs and snapshots remain outside Git.
 
 ## Non-negotiable safety constraints
@@ -54,9 +54,12 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 - [x] Confirm the public checkpoint contains the launcher, Camera Viewer, Media Overlay, Remote Mapper, CT125 control app, CT120 camera bridge, build/install scripts and regression tests.
 - [x] Confirm `launcher-runtime.js` is generated and is not missing source.
 - [x] Make the native broker contract test explicitly SKIP when the canonical broker source is absent; this skip is evidence of incompleteness, not a passing broker validation.
-- [ ] Restore the canonical `remote-broker/` source from the full checkpoint after fixing the export filter; verify its hash/provenance and run the broker contract test before any broker development or full-suite release.
+- [x] Recover the canonical `remote-broker/remote-broker.c` from the original project/full checkpoint and fix the export filter. Corrected source SHA-256: `a2e1ba57a32670a038576f7696da8d29fc09added04a5452a645dbff51397d7c`.
+- [x] Audit the corrected export for additional omissions: 33 development/diagnostic helper scripts and seven generated TV-script reference copies were restored; no other editable application source was found missing.
+- [ ] Import the corrected 237-file export into GitHub `develop`, preserving repository-only CI/roadmap files added after the original export.
+- [ ] Re-enable the native broker contract test without a source-missing skip and require PASS.
 - [ ] Decide whether editable source for Magic Remote overlay and webwrappers should be recovered into the public source repository; current handoff says only deployed copies are preserved privately.
-- [ ] Audit `SOURCE-SHA256SUMS.txt` against the imported source layout and document the corrected GitHub export filter so a binary named `remote-broker` cannot exclude the `remote-broker/` source directory again.
+- [ ] Import and verify the corrected `SOURCE-SHA256SUMS.txt` / source-completeness audit in GitHub. Corrected package evidence: ZIP SHA-256 `1b5ddcafb739f8e1d9900626a353f42209173ed99f8efe6007b4683e638f735e`; TAR SHA-256 `3a9b51861a19888a91e430ff9732a8ce076987cd39e6373098d4b430946c11cf`.
 
 ### P0.4 Baseline parity and reproducibility gate — REQUIRED BEFORE LIVE EXPERIMENTS
 
@@ -71,7 +74,7 @@ This is the canonical development roadmap for the GitHub source checkpoint impor
 
 ### P0.5 GitHub baseline release — REQUIRED BEFORE FEATURE WORK
 
-- [ ] Restore and validate the canonical `remote-broker/` source.
+- [ ] Import the corrected audited source export, including `remote-broker/`, the 33 restored helper scripts, seven generated TV-script reference copies and `docs/SOURCE-COMPLETENESS-AUDIT.md`.
 - [ ] Re-run the complete CI with the broker contract test active, not skipped.
 - [ ] Normalize current component versions in top-level documentation to match manifests/handoff.
 - [ ] Replace stale pre-GitHub source paths with repository-root paths while preserving clearly marked private-restore references.
