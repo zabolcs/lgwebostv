@@ -1,10 +1,7 @@
 name: Activity Manager permission diagnostics
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/activity-manager-permission-diagnostics.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
