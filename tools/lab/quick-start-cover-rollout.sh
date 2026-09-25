@@ -115,7 +115,7 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.4.7-probe" tools/generated-tv-scripts/guard.sh
+grep -q "guard v0.4.0" tools/generated-tv-scripts/guard.sh
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
 "${SSH[@]}" "sh -n '$GUARD.new'; chmod 755 '$GUARD.new'; mv -f '$GUARD.new' '$GUARD'"
@@ -125,7 +125,7 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.7-probe started'"
+"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.0 started'"
 echo COVER_GUARD_DEPLOY=PASS
 
 origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
@@ -167,7 +167,6 @@ echo "PRE_STANDBY_WINDOW=$WINDOW"
 echo "$WINDOW" | grep -vq "$OVERLAY"
 PRE_LINES="$("${SSH[@]}" "wc -l </var/log/messages 2>/dev/null || echo 0")"
 PRE_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
-"${SSH[@]}" "rm -f /tmp/hu.szabi.launcher-quick-timing.log"
 
 echo "POWER_OFF_RESPONSE=$(api /api/tv/power '{"state":"off"}')"
 OFF_SENT=1
@@ -254,8 +253,7 @@ PY
 "${SSH[@]}" "mountpoint -q /var/lib/eim && mountpoint -q '$BASE/frozen-view'"
 echo OVERLAY_PERSISTED=PASS
 
-echo QUICK_TIMING_BEGIN
-"${SSH[@]}" "cat /tmp/hu.szabi.launcher-quick-timing.log 2>/dev/null || true"
-echo QUICK_TIMING_END
-echo TIMING_PROBE_COMPLETE_FORCE_ROLLBACK
-exit 86
+COMMITTED=1
+echo "ROLLBACK_BACKUP=$BACKUP"
+echo QUICK_COVER_ROLLOUT=PASS
+trap 'rm -rf "$TMP"' EXIT
