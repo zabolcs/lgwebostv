@@ -25,6 +25,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          PARAMIKO_DIR="$RUNNER_TEMP/lgtv-paramiko"
+          rm -rf "$PARAMIKO_DIR"
+          python3 -m pip install --disable-pip-version-check --no-input --quiet \
+            --target "$PARAMIKO_DIR" 'paramiko==3.5.1'
+          export PYTHONPATH="$PARAMIKO_DIR${PYTHONPATH:+:$PYTHONPATH}"
+
           python3 - <<'PY'
           from __future__ import annotations
 
@@ -38,14 +44,23 @@ jobs:
           import time
 
           PRIVATE = Path("/media/lgtv/checkpoint-20260925-20260925-092443")
-          DEST = Path("/media/lgtv/rollback-20260925-pre-activity-manager")
-          COMPLETE = DEST / "COMPLETE"
+          FINAL = Path("/media/lgtv/rollback-20260925-pre-activity-manager")
+          STAGE = Path(str(FINAL) + ".staging")
+          COMPLETE = FINAL / "COMPLETE"
 
           if COMPLETE.exists():
-              print(f"rollback snapshot already complete: {DEST}")
+              print(f"rollback snapshot already complete: {FINAL}")
               raise SystemExit(0)
-          if DEST.exists():
-              raise SystemExit(f"incomplete rollback directory already exists: {DEST}")
+          if FINAL.exists():
+              # The first failed attempt created the final directory before doing
+              # any capture. Only an empty directory is safe to discard here.
+              if any(FINAL.iterdir()):
+                  raise SystemExit(f"non-empty incomplete rollback directory exists: {FINAL}")
+              FINAL.rmdir()
+          if STAGE.exists():
+              import shutil
+              shutil.rmtree(STAGE)
+          DEST = STAGE
           DEST.mkdir(parents=True, exist_ok=False)
 
           candidates = [
@@ -215,7 +230,8 @@ jobs:
           - No TV reboot is required merely to restore these files unless a later experiment specifically proves otherwise.
           """
           (DEST / "RESTORE.txt").write_text(restore, encoding="utf-8")
-          COMPLETE.write_text(
+          stage_complete = DEST / "COMPLETE"
+          stage_complete.write_text(
               json.dumps({
                   "createdEpoch": int(time.time()),
                   "purpose": "pre-Activity-Manager launcher latency experiment",
@@ -226,8 +242,9 @@ jobs:
               encoding="utf-8",
           )
 
-          print(f"ROLLBACK_SNAPSHOT={DEST}")
-          print(f"TV_ARCHIVE_BYTES={(DEST / 'tv-current.tar.gz').stat().st_size}")
-          print(f"CT125_ARCHIVE_BYTES={(DEST / 'ct125-current.tar.gz').stat().st_size}")
+          os.replace(DEST, FINAL)
+          print(f"ROLLBACK_SNAPSHOT={FINAL}")
+          print(f"TV_ARCHIVE_BYTES={(FINAL / 'tv-current.tar.gz').stat().st_size}")
+          print(f"CT125_ARCHIVE_BYTES={(FINAL / 'ct125-current.tar.gz').stat().st_size}")
           print("ROLLBACK_CAPTURE=PASS")
           PY
