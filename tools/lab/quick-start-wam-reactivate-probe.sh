@@ -66,7 +66,7 @@ trap cleanup EXIT
 stop_guard
 echo GUARD_STOPPED_FOR_INSTANCE_CAPTURE=PASS
 "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
-"${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.service.webappmanager/killApp '{\"appId\":\"$OVERLAY\",\"reason\":\"wam-reactivate-instance-capture\"}' >/dev/null 2>&1 || true"
+"${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.service.webappmanager/killApp '{\"appId\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
 for _ in $(seq 1 30); do
   if ! node tools/lab/measure-launcher-cdp.mjs "$OVERLAY" >/dev/null 2>&1; then break; fi
   sleep 0.1
