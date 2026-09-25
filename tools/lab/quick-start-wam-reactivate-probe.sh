@@ -86,8 +86,10 @@ sleep 1
 stop_guard
 echo GUARD_STOPPED=PASS
 
-APPINFO="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.applicationmanager/getAppInfo '{\"id\":\"$OVERLAY\"}'")"
-RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'")"
+APPINFO="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo '{\"id\":\"$OVERLAY\"}'" 2>&1)"
+RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1)"
+echo "APPINFO_RAW=$APPINFO"
+echo "RUNNING_RAW=$RUNNING"
 PAYLOAD="$(python3 - "$APPINFO" "$RUNNING" "$origin" "$display" "$OVERLAY" <<'PY'
 import json,sys
 appinfo=json.loads(sys.argv[1])
