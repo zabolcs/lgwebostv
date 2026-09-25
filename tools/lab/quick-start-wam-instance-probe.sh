@@ -5,95 +5,120 @@ TV_HOST=192.168.0.240
 TV=root@"$TV_HOST"
 SOURCE_KEY=/media/lgtv/id_rsa
 OVERLAY=hu.szabi.launcher.overlay
+DIR=/var/lib/webosbrew/launcher-home
+EVENTS=/tmp/hu.szabi.launcher-app-life-events.log
+STATUS=/tmp/hu.szabi.launcher-app-life-status.log
+EVENTS_PID=/tmp/hu.szabi.launcher-app-life-events.pid
+STATUS_PID=/tmp/hu.szabi.launcher-app-life-status.pid
 
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 cp "$SOURCE_KEY" "$TMP/id_rsa"
 chmod 600 "$TMP/id_rsa"
 ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
 SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
 
-"${SSH[@]}" true
-
-query() {
-  local uri="$1" payload="$2"
-  "${SSH[@]}" "luna-send -t 1 -f -w 2500 '$uri' '$payload'" 2>&1 || true
+cleanup() {
+  set +e
+  "${SSH[@]}" '
+    for f in /tmp/hu.szabi.launcher-app-life-events.pid /tmp/hu.szabi.launcher-app-life-status.pid; do
+      p=$(cat "$f" 2>/dev/null || true)
+      case "$p" in ""|*[!0-9]*) ;; *) kill "$p" 2>/dev/null || true ;; esac
+      rm -f "$f"
+    done
+  ' >/dev/null 2>&1 || true
+  rm -rf "$TMP"
 }
+trap cleanup EXIT
 
-MANAGER_INFO="$(query luna://com.webos.applicationManager/dev/managerInfo '{}')"
-SAM_RUNNING="$(query luna://com.webos.applicationManager/running '{}')"
-SAM_DEV_RUNNING="$(query luna://com.webos.applicationManager/dev/running '{}')"
-WAM_RUNNING="$(query luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}')"
-WAM_PROCESSES="$(query luna://com.webos.service.webappmanager/getWebProcessSize '{}')"
-FOREGROUND="$(query luna://com.webos.applicationManager/getForegroundAppInfo '{"extraInfo":true}')"
+"${SSH[@]}" true
+"${SSH[@]}" "rm -f '$EVENTS' '$STATUS' '$EVENTS_PID' '$STATUS_PID';
+  nohup luna-send -i -f luna://com.webos.applicationManager/getAppLifeEvents '{\"subscribe\":true}' >'$EVENTS' 2>&1 </dev/null & echo \$! >'$EVENTS_PID';
+  nohup luna-send -i -f luna://com.webos.applicationManager/getAppLifeStatus '{\"subscribe\":true}' >'$STATUS' 2>&1 </dev/null & echo \$! >'$STATUS_PID'"
+sleep 0.4
 
-echo "MANAGER_INFO_RAW=$MANAGER_INFO"
-echo "SAM_RUNNING_RAW=$SAM_RUNNING"
-echo "SAM_DEV_RUNNING_RAW=$SAM_DEV_RUNNING"
+origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
+display="$("${SSH[@]}" "cat '$DIR/display-preferences.json' 2>/dev/null")"
+[ -n "$display" ] || display='{}'
+preload="$(printf '{"id":"%s","preload":"full","keepAlive":true,"noSplash":true,"params":{"source":"instance-probe","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY" "$origin" "$display")"
+PRELOAD_RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 5000 luna://com.webos.applicationManager/launch '$preload'" 2>&1 || true)"
+echo "PRELOAD_RESULT=$PRELOAD_RESULT"
+sleep 0.8
+
+EVENTS_RAW="$("${SSH[@]}" "cat '$EVENTS' 2>/dev/null || true")"
+STATUS_RAW="$("${SSH[@]}" "cat '$STATUS' 2>/dev/null || true")"
+WAM_RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 2500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1 || true)"
+WAM_PROCESSES="$("${SSH[@]}" "luna-send -t 1 -f -w 2500 luna://com.webos.service.webappmanager/getWebProcessSize '{}'" 2>&1 || true)"
+
+echo "APP_LIFE_EVENTS_RAW=$EVENTS_RAW"
+echo "APP_LIFE_STATUS_RAW=$STATUS_RAW"
 echo "WAM_RUNNING_RAW=$WAM_RUNNING"
 echo "WAM_PROCESSES_RAW=$WAM_PROCESSES"
-echo "FOREGROUND_RAW=$FOREGROUND"
 
-python3 - "$OVERLAY" "$MANAGER_INFO" "$SAM_RUNNING" "$SAM_DEV_RUNNING" "$WAM_RUNNING" "$WAM_PROCESSES" "$FOREGROUND" <<'PY'
+python3 - "$OVERLAY" "$EVENTS_RAW" "$STATUS_RAW" "$WAM_RUNNING" "$WAM_PROCESSES" <<'PY'
 import json
 import sys
 
 appid = sys.argv[1]
-raws = {
-    "managerInfo": sys.argv[2],
-    "samRunning": sys.argv[3],
-    "samDevRunning": sys.argv[4],
-    "wamRunning": sys.argv[5],
-    "wamProcesses": sys.argv[6],
-    "foreground": sys.argv[7],
+sources = {
+    "lifeEvents": sys.argv[2],
+    "lifeStatus": sys.argv[3],
+    "wamRunning": sys.argv[4],
+    "wamProcesses": sys.argv[5],
 }
 
-def payload(raw):
+def decode_objects(raw):
     marker = "payload "
-    pos = raw.find(marker)
-    if pos >= 0:
-        raw = raw[pos + len(marker):]
-    raw = raw.lstrip()
-    value, _ = json.JSONDecoder().raw_decode(raw)
-    return value
+    if marker in raw:
+        raw = raw.replace(marker, "")
+    out = []
+    dec = json.JSONDecoder()
+    pos = 0
+    while pos < len(raw):
+        start = raw.find("{", pos)
+        if start < 0:
+            break
+        try:
+            obj, used = dec.raw_decode(raw[start:])
+            out.append(obj)
+            pos = start + used
+        except Exception:
+            pos = start + 1
+    return out
 
 found = []
-for name, raw in raws.items():
-    try:
-        obj = payload(raw)
-    except Exception as exc:
-        print(f"{name}: parse failed: {exc}")
-        continue
-
-    candidates = []
-    if isinstance(obj, dict):
-        candidates.extend(obj.get("running", []) if isinstance(obj.get("running"), list) else [])
-        candidates.extend(obj.get("foregroundAppInfo", []) if isinstance(obj.get("foregroundAppInfo"), list) else [])
-        for proc in obj.get("WebProcesses", []) if isinstance(obj.get("WebProcesses"), list) else []:
-            if not isinstance(proc, dict):
+for name, raw in sources.items():
+    for obj in decode_objects(raw):
+        candidates = []
+        if isinstance(obj, dict):
+            candidates.append(obj)
+            if isinstance(obj.get("running"), list):
+                candidates.extend(obj["running"])
+            if isinstance(obj.get("WebProcesses"), list):
+                for proc in obj["WebProcesses"]:
+                    if not isinstance(proc, dict):
+                        continue
+                    for app in proc.get("runningApps", []) if isinstance(proc.get("runningApps"), list) else []:
+                        if isinstance(app, dict):
+                            app = dict(app)
+                            app.setdefault("webprocessid", proc.get("pid"))
+                            candidates.append(app)
+        for item in candidates:
+            if not isinstance(item, dict):
                 continue
-            for app in proc.get("runningApps", []) if isinstance(proc.get("runningApps"), list) else []:
-                if isinstance(app, dict):
-                    app = dict(app)
-                    app.setdefault("webprocessid", proc.get("pid"))
-                    candidates.append(app)
-
-    for item in candidates:
-        if not isinstance(item, dict):
-            continue
-        if item.get("id") != appid and item.get("appId") != appid:
-            continue
-        iid = item.get("instanceId")
-        wid = item.get("webprocessid") or item.get("processId") or item.get("processid")
-        print(f"{name}: overlay instanceId={iid!r} webprocessid={wid!r}")
-        if iid:
-            found.append((name, str(iid), str(wid or "")))
+            if item.get("appId") != appid and item.get("id") != appid:
+                continue
+            iid = item.get("instanceId")
+            wid = item.get("webprocessid") or item.get("processId") or item.get("processid")
+            event = item.get("event") or item.get("status")
+            print(f"{name}: overlay event={event!r} instanceId={iid!r} webprocessid={wid!r}")
+            if iid:
+                found.append((name, str(iid), str(wid or "")))
 
 if not found:
     print("OVERLAY_INSTANCE_ID=NOT_FOUND")
     raise SystemExit(3)
 
-name, iid, wid = found[0]
+name, iid, wid = found[-1]
 print(f"OVERLAY_INSTANCE_SOURCE={name}")
 print(f"OVERLAY_INSTANCE_ID={iid}")
 print(f"OVERLAY_WEBPROCESS_ID={wid}")
