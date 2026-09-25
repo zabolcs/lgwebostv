@@ -26,6 +26,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          ROLLBACK_COMPLETE=/media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          if [ ! -f "$ROLLBACK_COMPLETE" ]; then
+            echo "ROLLBACK_BASELINE=REQUIRED"
+            echo "LIVE_CHANGES=NONE"
+            exit 0
+          fi
+
           TV_HOST=192.168.0.240
           SOURCE_KEY=/media/lgtv/id_rsa
           APP_ID=hu.szabi.launcher.startupprobe
