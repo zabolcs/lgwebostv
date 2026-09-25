@@ -1,0 +1,141 @@
+name: Native Auto Browser boot measurement
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/native-auto-browser-boot-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - name: Temporarily enable Auto Browser, reboot, measure, restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          TV_HOST=192.168.0.240
+          TV=root@"$TV_HOST"
+          KEY=/media/lgtv/id_rsa
+          PORT=18765
+          BACKUP=/media/lgtv/autobrowser-test-original-20260925.txt
+          TMP="$(mktemp -d)"
+          KNOWN="$TMP/known_hosts"
+          HTTP_LOG="$TMP/http.log"
+          SETTINGS_CHANGED=0
+          SERVER_PID=""
+
+          ssh-keyscan -T 3 "$TV_HOST" >"$KNOWN" 2>/dev/null
+          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$TV")
+          ssh_ok() { "${SSH[@]}" true >/dev/null 2>&1; }
+
+          restore() {
+            [ "$SETTINGS_CHANGED" -eq 1 ] || return 0
+            for _ in $(seq 1 180); do ssh_ok && break; sleep 1; done
+            "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/setSystemSettings' '{\"category\":\"hotelMode\",\"settings\":{\"enableAutoBrowser\":\"off\",\"autoBrowserUrl\":\"\"}}' 2>&1" || true
+            SETTINGS_CHANGED=0
+          }
+          cleanup() {
+            rc=$?
+            set +e
+            restore
+            [ -n "$SERVER_PID" ] && kill "$SERVER_PID" >/dev/null 2>&1 || true
+            rm -rf "$TMP"
+            exit "$rc"
+          }
+          trap cleanup EXIT
+
+          test -f /media/lgtv/rollback-20260925-pre-activity-manager/COMPLETE
+          ssh_ok
+          echo TV_SSH_BEFORE=PASS
+          echo ROLLBACK_BASELINE=PASS
+
+          "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"hotelMode\",\"keys\":[\"enableAutoBrowser\",\"autoBrowserUrl\",\"powerOnDefaultAv\",\"powerOnStatus\"],\"subscribe\":false}' 2>&1" | tee "$BACKUP"
+          grep -q '"enableAutoBrowser":"off"' "$BACKUP"
+          grep -q '"autoBrowserUrl":""' "$BACKUP"
+          echo ORIGINAL_SETTINGS_BACKUP="$BACKUP"
+
+          RUNNER_IP="$(hostname -I | tr ' ' '\n' | grep '^192\.168\.0\.' | head -1)"
+          test -n "$RUNNER_IP"
+          TEST_URL="http://$RUNNER_IP:$PORT/probe.html"
+          mkdir -p "$TMP/web"
+          printf '%s\n' '<!doctype html><title>LGTV boot probe</title><h1>LGTV Auto Browser boot probe</h1>' >"$TMP/web/probe.html"
+          python3 -m http.server "$PORT" --bind 0.0.0.0 --directory "$TMP/web" >"$HTTP_LOG" 2>&1 &
+          SERVER_PID=$!
+          sleep 1
+          curl -fsS "$TEST_URL" >/dev/null
+          "${SSH[@]}" "wget -qO- '$TEST_URL' >/dev/null"
+          : >"$HTTP_LOG"
+          echo HTTP_PREFLIGHT=PASS
+          echo TEST_URL="$TEST_URL"
+
+          SETTINGS_CHANGED=1
+          "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/setSystemSettings' '{\"category\":\"hotelMode\",\"settings\":{\"enableAutoBrowser\":\"on\",\"autoBrowserUrl\":\"$TEST_URL\"}}' 2>&1" | tee "$TMP/set.txt"
+          grep -q '"returnValue":true' "$TMP/set.txt"
+          "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"hotelMode\",\"keys\":[\"enableAutoBrowser\",\"autoBrowserUrl\"],\"subscribe\":false}' 2>&1" | tee "$TMP/readback.txt"
+          grep -q '"enableAutoBrowser":"on"' "$TMP/readback.txt"
+          grep -Fq "$TEST_URL" "$TMP/readback.txt"
+          echo TEST_SETTINGS_VERIFY=PASS
+
+          REBOOT_MS="$(date +%s%3N)"
+          echo REBOOT_REQUEST_EPOCH_MS="$REBOOT_MS"
+          "${SSH[@]}" 'sync; reboot' >/dev/null 2>&1 || true
+          echo REBOOT_COMMAND_SENT=PASS
+
+          for i in $(seq 1 45); do
+            if ! ssh_ok; then echo SSH_DROP_AFTER_SECONDS="$i"; break; fi
+            sleep 1
+          done
+
+          HTTP_SEEN=0
+          HTTP_SEEN_MS=""
+          for i in $(seq 1 480); do
+            if grep -q 'GET /probe.html' "$HTTP_LOG" 2>/dev/null; then
+              HTTP_SEEN=1
+              HTTP_SEEN_MS="$(date +%s%3N)"
+              break
+            fi
+            sleep 0.25
+          done
+          echo HTTP_SEEN="$HTTP_SEEN"
+          if [ -n "$HTTP_SEEN_MS" ]; then
+            python3 - "$REBOOT_MS" "$HTTP_SEEN_MS" <<'PY'
+          import sys
+          print("HTTP_DETECTED_AFTER_REBOOT_REQUEST_SECONDS=%.3f"%((int(sys.argv[2])-int(sys.argv[1]))/1000))
+          PY
+          fi
+
+          for i in $(seq 1 180); do
+            if ssh_ok; then echo SSH_RETURNED_AFTER_SECONDS="$i"; break; fi
+            sleep 1
+          done
+          ssh_ok
+          echo TV_SSH_AFTER=PASS
+          "${SSH[@]}" "cat /proc/uptime"
+          echo HTTP_LOG_BEGIN
+          cat "$HTTP_LOG" || true
+          echo HTTP_LOG_END
+
+          echo BOOT_LOG_AUTOBROWSER_BEGIN
+          "${SSH[@]}" "grep -n -E 'Try to launch first app|Auto Browser|applicationManager/launch|firstapp-launched|Request :' /var/log/bootd.log 2>/dev/null | head -140 || true"
+          echo BOOT_LOG_AUTOBROWSER_END
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.applicationManager/getForegroundAppInfo' '{}' 2>&1" || true
+
+          restore
+          "${SSH[@]}" "luna-send -t 1 -f -w 5000 'luna://com.webos.settingsservice/getSystemSettings' '{\"category\":\"hotelMode\",\"keys\":[\"enableAutoBrowser\",\"autoBrowserUrl\"],\"subscribe\":false}' 2>&1" | tee "$TMP/restored.txt"
+          grep -q '"enableAutoBrowser":"off"' "$TMP/restored.txt"
+          grep -q '"autoBrowserUrl":""' "$TMP/restored.txt"
+          echo RESTORE_VERIFY=PASS
+
+          "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.webos.applicationManager/launch' '{\"id\":\"hu.szabi.launcher\"}'" >/dev/null 2>&1 || true
+          echo PRODUCTION_LAUNCHER_RELAUNCH_REQUESTED=YES
+
+          kill "$SERVER_PID" >/dev/null 2>&1 || true
+          SERVER_PID=""
+          trap 'rm -rf "$TMP"' EXIT
+          echo AUTO_BROWSER_TEST_COMPLETE=PASS
