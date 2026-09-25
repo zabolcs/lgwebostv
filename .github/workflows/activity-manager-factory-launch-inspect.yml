@@ -171,6 +171,14 @@ jobs:
           "${SSH[@]}" "echo ---hb-services---; cat /media/developer/apps/usr/palm/services/org.webosbrew.hbchannel.service/services.json 2>/dev/null || cat /media/cryptofs/apps/usr/palm/services/org.webosbrew.hbchannel.service/services.json 2>/dev/null || true"
           "${SSH[@]}" "echo ---hb-activity---; luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityName\":\"org.webosbrew.hbchannel.service.autostart\",\"creator\":{\"serviceId\":\"org.webosbrew.hbchannel.service\"},\"current\":false,\"internal\":false}' 2>&1 || true"
 
+          echo '=== PRODUCTION EIM OVERLAY PREFLIGHT ==='
+          "${SSH[@]}" "echo ---lastinput---; cat /var/lib/eim/lastinput 2>/dev/null || true"
+          "${SSH[@]}" "echo ---getLastInput---; luna-send -t 1 -f -w 4000 'luna://com.webos.service.eim/getLastInput' '{}' 2>&1 || true"
+          "${SSH[@]}" "echo ---device-db-launcher---; grep -n 'hu.szabi.launcher' /var/lib/eim/eim_device_db.json 2>/dev/null || true"
+          "${SSH[@]}" "echo ---mount-eim---; findmnt /var/lib/eim 2>/dev/null || true"
+          "${SSH[@]}" "echo ---init-hooks---; ls -la /var/lib/webosbrew/init.d 2>/dev/null || true"
+          "${SSH[@]}" "echo ---webosbrew-startup---; test -f /tmp/webosbrew_startup && echo startup-done || echo startup-not-done"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
