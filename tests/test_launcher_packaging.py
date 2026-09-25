@@ -142,6 +142,25 @@ class LauncherPackagingTests(unittest.TestCase):
             for filename in ("package.json", "services.json", "service-core.js", "service.js"):
                 self.assertIn(service_root + filename, files)
 
+    def test_eim_autostart_probe_is_isolated_input_app(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            BUILDER.BUILD = Path(temporary)
+            path, _ = BUILDER.build(
+                "eim-autostart-probe",
+                BUILDER.DIAGNOSTIC_APPS["eim-autostart-probe"],
+            )
+            files = data_files(path.read_bytes())
+            app_id = "hu.szabi.launcher.eimprobe"
+            app_root = f"usr/palm/applications/{app_id}/"
+            package = json.loads(files[f"usr/palm/packages/{app_id}/packageinfo.json"])
+            manifest = json.loads(files[app_root + "appinfo.json"])
+
+            self.assertEqual(package["app"], app_id)
+            self.assertEqual(package["services"], [])
+            self.assertEqual(manifest["version"], "0.0.1")
+            self.assertTrue(manifest["supportGIP"])
+            self.assertEqual(manifest["type"], "web")
+
     def test_quick_directory_contains_metadata_only(self) -> None:
         entries = sorted(path.name for path in (ROOT / "apps" / "launcher-quick").iterdir())
         self.assertEqual(entries, ["README-HU.md", "appinfo.json"])
