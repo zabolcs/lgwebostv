@@ -1,0 +1,35 @@
+name: Quick Start fast-lane rollout
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/quick-start-fast-lane-rollout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rollout:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/lab/quick-start-fast-lane-rollout.sh
+          sh -n tools/generated-tv-scripts/guard.sh
+          grep -q "guard v0.3.8" tools/generated-tv-scripts/guard.sh
+
+      - name: Deploy and measure Quick Start fast lane
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/lab/quick-start-fast-lane-rollout.sh
