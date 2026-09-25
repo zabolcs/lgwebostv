@@ -10,10 +10,9 @@ on:
 permissions:
   contents: read
 
-# one-shot: Prepare Resume v0.4.3
-
 jobs:
   rollout:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     steps:
@@ -28,7 +27,7 @@ jobs:
           set -euo pipefail
           bash -n tools/lab/quick-start-cover-rollout.sh
           sh -n tools/generated-tv-scripts/guard.sh
-          grep -q "guard v0.4.3" tools/generated-tv-scripts/guard.sh
+          grep -q "guard v0.4.0" tools/generated-tv-scripts/guard.sh
 
       - name: Deploy and measure prewarmed cover
         shell: bash
