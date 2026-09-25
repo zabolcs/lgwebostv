@@ -56,7 +56,7 @@ function firstAppLaunchedCreateRequest() {
     activity: {
       name: SERVICE_ID + '.firstAppLaunched',
       description: 'Persistent first-app-launched callback timing probe',
-      type: {foreground: true, persist: true, continuous: true},
+      type: {foreground: true, persist: true},
       trigger: {
         method: 'luna://com.webos.bootManager/getBootStatus',
         params: {subscribe: true},
