@@ -153,6 +153,13 @@ jobs:
           echo '=== SETTINGS / PREF FILE REFERENCES ==='
           "${SSH[@]}" "grep -R -n -i -E 'powerOnDefaultAv|powerOnStatus|defaultApp|lastInput|last input|firstAppId|homeAutoLaunch|autoBrowserUrl|enableAutoBrowser' /var/luna /var/palm /var/preferences /etc/palm /usr/palm 2>/dev/null | head -400 || true"
 
+          echo '=== EIM INPUT-APP AUTOSTART CAPABILITY ==='
+          "${SSH[@]}" "ls-monitor -l 2>/dev/null | grep -E 'com\.webos\.service\.eim|eim' || true"
+          "${SSH[@]}" "ls-monitor -i com.webos.service.eim 2>/dev/null | head -240 || true"
+          "${SSH[@]}" "echo ---/var/lib/eim---; ls -la /var/lib/eim 2>/dev/null || true; echo ---lastinput---; cat /var/lib/eim/lastinput 2>/dev/null || true"
+          "${SSH[@]}" "echo ---eim-files---; find /var/lib/eim -maxdepth 2 -type f -print 2>/dev/null | sort | head -200"
+          "${SSH[@]}" "echo ---launcher-appinfo---; cat /media/developer/apps/usr/palm/applications/hu.szabi.launcher/appinfo.json 2>/dev/null || true"
+
           echo '=== DIRECT REBOOT POSTMORTEM ==='
           "${SSH[@]}" "date +%s; cat /proc/uptime"
           "${SSH[@]}" "luna-send -t 1 -f -w 4000 'luna://com.palm.activitymanager/getDetails' '{\"activityId\":103,\"current\":false,\"internal\":false}' 2>&1" || true
