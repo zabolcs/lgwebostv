@@ -54,8 +54,6 @@ cleanup() {
 trap cleanup EXIT
 
 "${SSH[@]}" true
-stop_guard
-echo GUARD_STOPPED=PASS
 "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.applicationManager/closeByAppId '{\"id\":\"$OVERLAY\"}' >/dev/null 2>&1 || true"
 sleep 1
 
@@ -63,9 +61,12 @@ origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
 display="$("${SSH[@]}" "cat '$DIR/display-preferences.json' 2>/dev/null")"
 [ -n "$display" ] || display='{}'
 preload="$(printf '{"id":"%s","preload":"full","keepAlive":true,"noSplash":true,"params":{"source":"preload","launcherHost":"full-overlay","controlOrigin":"%s","displayPreferences":%s}}' "$OVERLAY" "$origin" "$display")"
-"${SSH[@]}" "luna-send-pub -n 1 -f -w 5000 luna://com.webos.applicationManager/launch '$preload'" >/dev/null
+PRELOAD_RESULT="$("${SSH[@]}" "luna-send-pub -t 1 -f -w 5000 luna://com.webos.applicationManager/launch '$preload' 2>&1")"
+echo "PRELOAD_RESULT=$PRELOAD_RESULT"
+echo "$PRELOAD_RESULT" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'
 
 READY=0
+CDP=""
 for i in $(seq 1 40); do
   CDP="$(node tools/lab/measure-launcher-cdp.mjs "$OVERLAY" 2>/dev/null || true)"
   if [ -n "$CDP" ] && python3 - "$CDP" <<'PY'
@@ -76,10 +77,14 @@ PY
   then READY=1; echo "PREWARM_READY_POLL=$i"; break; fi
   sleep 0.2
 done
+echo "PREWARM_CDP=$CDP"
 test "$READY" -eq 1
+echo PREWARM_READY=PASS
 
 "${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-reactivate-probe\"}}' >/dev/null"
 sleep 1
+stop_guard
+echo GUARD_STOPPED=PASS
 
 APPINFO="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.applicationmanager/getAppInfo '{\"id\":\"$OVERLAY\"}'")"
 RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'")"
