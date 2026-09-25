@@ -35,8 +35,26 @@ assert.strictEqual(bootup.activity.type.persist, true);
 assert.strictEqual(bootup.activity.type.continuous, true);
 assert.deepStrictEqual(bootup.activity.requirements, {bootup: true});
 assert.deepStrictEqual(bootup.activity.callback.params, {kind: 'bootup'});
+
+var firstApp = core.firstAppLaunchedCreateRequest();
+assert.strictEqual(firstApp.start, true);
+assert.strictEqual(firstApp.replace, true);
+assert.strictEqual(firstApp.subscribe, false);
+assert.strictEqual(firstApp.activity.type.foreground, true);
+assert.strictEqual(firstApp.activity.type.persist, true);
+assert.strictEqual(firstApp.activity.type.continuous, true);
+assert.strictEqual(firstApp.activity.trigger.method, 'luna://com.webos.bootManager/getBootStatus');
+assert.deepStrictEqual(firstApp.activity.trigger.params, {subscribe: true});
+assert.deepStrictEqual(firstApp.activity.trigger.where, {
+  prop: 'firstAppLaunched',
+  op: '=',
+  val: true
+});
+assert.deepStrictEqual(firstApp.activity.callback.params, {kind: 'firstAppLaunched'});
+
 assert.strictEqual(core.normalizeKind('immediate'), 'immediate');
 assert.strictEqual(core.normalizeKind('bootup'), 'bootup');
+assert.strictEqual(core.normalizeKind('firstAppLaunched'), 'firstAppLaunched');
 assert.strictEqual(core.positiveActivityId(12), 12);
 assert.strictEqual(core.positiveActivityId('12'), 12);
 assert.strictEqual(core.positiveActivityId(0), null);
