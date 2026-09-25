@@ -17,6 +17,11 @@
           "public": false
         },
         {
+          "name": "armFirstAppLaunched",
+          "description": "Create a persistent firstAppLaunched boot trigger timing probe",
+          "public": false
+        },
+        {
           "name": "probe",
           "description": "Record one Activity Manager callback timestamp",
           "public": false
