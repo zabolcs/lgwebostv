@@ -24,6 +24,9 @@ jobs:
       - name: Validate helper
         run: python3 -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
 
+      - name: Ensure remote helper dependency
+        run: python3 -m pip install --user --disable-pip-version-check paramiko
+
       - name: Deploy server only
         run: |
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
