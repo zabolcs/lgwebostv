@@ -21,3 +21,24 @@ jobs:
           persist-credentials: false
       - name: Deploy guard
         run: python3 tools/lab/deploy-current-guard.py
+
+      - name: Verify factory Home replacement
+        shell: bash
+        run: |
+          set -euo pipefail
+          KNOWN="$(mktemp)"
+          trap 'rm -f "$KNOWN"' EXIT
+          ssh-keyscan -T 3 192.168.0.240 >"$KNOWN" 2>/dev/null
+          SSH=(ssh -T -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" root@192.168.0.240)
+          "${SSH[@]}" "luna-send-pub -n 1 -w 3000 -f luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.home\",\"params\":{}}' >/dev/null"
+          ok=0
+          for i in {1..20}; do
+            out="$("${SSH[@]}" "luna-send -n 1 -w 1500 -f luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>/dev/null || true")"
+            if grep -Eq '"appId"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher([.]overlay)?"' <<<"$out"; then
+              ok=1
+              break
+            fi
+            sleep 0.15
+          done
+          test "$ok" -eq 1
+          echo FACTORY_HOME_REPLACEMENT=PASS
