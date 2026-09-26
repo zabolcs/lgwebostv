@@ -1,10 +1,12 @@
 """Deploy NAS control files to CT125 through the known-good private Proxmox helper."""
 from pathlib import Path
+import base64
 import hashlib
 import importlib.util
 import os
 import shlex
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "remote-control"
@@ -26,6 +28,8 @@ if not HELPER.is_file():
 # Preload the runner-compatible SSH stack before the legacy helper prepends its vendored python/ tree.
 import paramiko  # noqa: F401
 import cryptography  # noqa: F401
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
 spec = importlib.util.spec_from_file_location("lgtv_private_remote", HELPER)
 remote = importlib.util.module_from_spec(spec)
@@ -42,35 +46,39 @@ def pve(conn, command, timeout=60):
         )
     return out.decode().strip()
 
-# Relocate the legacy Windows credential source to the private NAS checkpoint.
-if hasattr(remote, "OLD") and not Path(remote.OLD).is_file():
-    candidates = []
-    search_roots = [
-        Path("/media/lgtv/checkpoint-20260925-20260925-092443"),
-        Path("/media/lgtv/checkpoint-20260919-20260919-211820"),
-    ]
-    for root in search_roots:
-        if not root.exists():
-            continue
-        for pattern in ("*.md", "*.txt"):
-            for path in root.rglob(pattern):
-                try:
-                    text = path.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
-                    continue
-                if "- SSH jelszó:" in text:
-                    candidates.append(path)
-                    break
-            if candidates:
-                break
-        if candidates:
-            break
-    if not candidates:
-        raise SystemExit("Private checkpoint containing the SSH credential marker was not found")
-    remote.OLD = candidates[0]
-    print(f"Using private credential checkpoint: {remote.OLD}", flush=True)
+# Decrypt the repository-safe credential blob with the private key that exists
+# only on this self-hosted runner, then feed the legacy helper a short-lived
+# metadata file so its pinned host-key and connection behavior remain unchanged.
+cipher_path = ROOT / "tools" / "lab" / "pve-password.enc"
+private_key_path = Path.home() / ".cache" / "lgtv-deploy-transport" / "private.pem"
+if not cipher_path.is_file():
+    raise SystemExit(f"Encrypted PVE credential not found: {cipher_path}")
+if not private_key_path.is_file():
+    raise SystemExit(f"Runner deploy private key not found: {private_key_path}")
 
-conn = remote.connect()
+private_key = serialization.load_pem_private_key(private_key_path.read_bytes(), password=None)
+password = private_key.decrypt(
+    base64.b64decode(cipher_path.read_text(encoding="ascii").strip()),
+    padding.OAEP(
+        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+        algorithm=hashes.SHA256(),
+        label=None,
+    ),
+).decode("utf-8")
+
+fd, metadata_name = tempfile.mkstemp(prefix="lgtv-pve-credential.", suffix=".md")
+os.close(fd)
+metadata_path = Path(metadata_name)
+metadata_path.write_text("- SSH jelszó: `" + password + "`\n", encoding="utf-8")
+os.chmod(metadata_path, 0o600)
+password = ""
+remote.OLD = metadata_path
+
+try:
+    conn = remote.connect()
+finally:
+    metadata_path.unlink(missing_ok=True)
+
 try:
     stage = pve(conn, "mktemp -d /tmp/lgtv-native-deploy.XXXXXX")
     backup = pve(conn, "pct exec "+CTID+" -- sh -c " + shlex.quote(
