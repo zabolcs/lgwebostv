@@ -775,6 +775,10 @@
     }
     function installTvNavigation() {
       if (mode !== 'tv') return;
+      function loadingCoverActive() {
+        var cover = document.getElementById('launcher-boot');
+        return !!(cover && !cover.hidden);
+      }
       function resetRemotePress() {
         if (okHoldTimer) global.clearTimeout(okHoldTimer);
         okHoldTimer = null; okHeld = false;
@@ -786,7 +790,7 @@
       document.addEventListener('webOSRelaunch', resetRemotePress);
       document.addEventListener('keydown', function (event) {
         if (document.hidden || parked) { resetRemotePress(); return; }
-        if (document.body.classList.contains('launcher-loading-active')) {
+        if (loadingCoverActive()) {
           event.preventDefault(); event.stopPropagation();
           resetRemotePress();
           return;
@@ -852,7 +856,7 @@
       });
       document.addEventListener('keyup', function (event) {
         if (document.hidden || parked) { resetRemotePress(); return; }
-        if (document.body.classList.contains('launcher-loading-active')) {
+        if (loadingCoverActive()) {
           event.preventDefault(); event.stopPropagation();
           resetRemotePress();
           return;
