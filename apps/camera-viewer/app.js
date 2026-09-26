@@ -14,6 +14,8 @@
   var MJPEG_TIMEOUT = 9000;
   var FLOATING_MESSAGE_TIMEOUT = 5000;
   var DEFAULT_PREVIEW_INTERVAL_SECONDS = 60;
+  var GRID_LIVE_FOCUS_DELAY_MS = 600;
+  var GRID_LIVE_RETRY_DELAY_MS = 1800;
   var MIN_PREVIEW_INTERVAL_SECONDS = 1;
   var MAX_PREVIEW_INTERVAL_SECONDS = 60;
   var LAYOUT_SIZES = [2, 3, 4];
@@ -783,6 +785,7 @@
       var job = state.gridJobs[i];
       job.stopped = true;
       if (job.timer) root.clearTimeout(job.timer);
+      if (job.liveRetryTimer) { root.clearTimeout(job.liveRetryTimer); job.liveRetryTimer = null; }
       clearGridLivePreview(job);
       if (job.tile && job.onFocus && typeof job.tile.removeEventListener === 'function') job.tile.removeEventListener('focus', job.onFocus);
       if (job.tile && job.onBlur && typeof job.tile.removeEventListener === 'function') job.tile.removeEventListener('blur', job.onBlur);
@@ -801,6 +804,7 @@
       focusTimer: null,
       liveImage: null,
       liveBadge: null,
+      liveRetryTimer: null,
       onFocus: null,
       onBlur: null,
       stopped: false,
@@ -819,6 +823,10 @@
       }
       job.requestStartedAt = Date.now();
       image.src = cacheBusted(buildUrl(profile, 'snapshot'));
+    }
+    function scheduleLivePreview(wait) {
+      if (job.focusTimer) root.clearTimeout(job.focusTimer);
+      job.focusTimer = root.setTimeout(startLivePreview, wait);
     }
     function startLivePreview() {
       job.focusTimer = null;
@@ -841,15 +849,24 @@
       job.liveBadge = liveBadge;
       tile.classList.add('is-live');
       liveImage.onerror = function () {
-        if (job.liveImage === liveImage) clearGridLivePreview(job);
+        if (job.liveImage !== liveImage) return;
+        clearGridLivePreview(job);
+        if (!job.stopped && !state.suspended && state.view === 'grid' && root.document.activeElement === tile) {
+          if (job.liveRetryTimer) root.clearTimeout(job.liveRetryTimer);
+          job.liveRetryTimer = root.setTimeout(function () {
+            job.liveRetryTimer = null;
+            if (root.document.activeElement === tile) scheduleLivePreview(0);
+          }, GRID_LIVE_RETRY_DELAY_MS);
+        }
       };
       liveImage.src = buildUrl(profile, 'mjpeg');
     }
     job.onFocus = function () {
-      if (job.focusTimer) root.clearTimeout(job.focusTimer);
-      job.focusTimer = root.setTimeout(startLivePreview, 150);
+      if (job.liveRetryTimer) { root.clearTimeout(job.liveRetryTimer); job.liveRetryTimer = null; }
+      scheduleLivePreview(GRID_LIVE_FOCUS_DELAY_MS);
     };
     job.onBlur = function () {
+      if (job.liveRetryTimer) { root.clearTimeout(job.liveRetryTimer); job.liveRetryTimer = null; }
       clearGridLivePreview(job);
     };
     tile.addEventListener('focus', job.onFocus);
