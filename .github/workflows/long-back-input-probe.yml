@@ -1,0 +1,58 @@
+name: Long Back input path probe
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/long-back-input-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          clean: false
+
+      - name: Probe input hook and Back injection
+        shell: bash
+        run: |
+          set -euo pipefail
+          KNOWN="$(mktemp)"
+          trap 'rm -f "$KNOWN"' EXIT
+          ssh-keyscan -T 3 192.168.0.240 >"$KNOWN" 2>/dev/null
+          SSH=(ssh -T -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" root@192.168.0.240)
+
+          "${SSH[@]}" '
+            echo "WATCHDOG_ENABLED=$(test -f /var/lib/webosbrew/inputhook-watchdog/enabled && echo yes || echo no)"
+            echo "HOOK_INIT=$(test -e /var/lib/webosbrew/init.d/inputhook && echo present || echo absent)"
+            p=$(pidof lginput2 2>/dev/null || true)
+            echo "LGINPUT2_PID=${p:-none}"
+            if [ -n "$p" ] && grep -q libphp /proc/$p/maps 2>/dev/null; then
+              echo "HOOK_ATTACHED=yes"
+            else
+              echo "HOOK_ATTACHED=no"
+            fi
+            echo "KEYBINDS_BEGIN"
+            cat /home/root/.config/lginputhook/keybinds.json 2>/dev/null || echo missing
+            echo
+            echo "KEYBINDS_END"
+          '
+
+          echo "NETWORKINPUT_PROBE_BEGIN"
+          "${SSH[@]}" "luna-send -n 1 -f luna://com.webos.service.networkinput/test/sendKeyCode '{\"keyCode\":412}' 2>&1 || true"
+          echo "NETWORKINPUT_PROBE_END"
+
+          sleep 0.5
+          echo "FOREGROUND_AFTER_BACK_BEGIN"
+          "${SSH[@]}" "luna-send -n 1 -f luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>&1 || true"
+          echo "FOREGROUND_AFTER_BACK_END"
+
+          # Leave the requested custom launcher visible after the probe.
+          "${SSH[@]}" "luna-send-pub -n 1 -w 3000 -f luna://com.webos.applicationManager/launch '{\"id\":\"hu.szabi.launcher\",\"params\":{\"source\":\"long-back-probe-restore\"}}' >/dev/null 2>&1 || true"
