@@ -32,18 +32,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Diagnose NAS deployment route
-        shell: bash
-        run: |
-          set -u
-          echo "RUNNER_HOST=$(hostname)"
-          echo "RUNNER_IPS=$(hostname -I 2>/dev/null || true)"
-          echo "PCT=$(command -v pct || true)"
-          echo "SSH_CONFIG_BEGIN"
-          grep -E '^(Host|[[:space:]]*HostName|[[:space:]]*User|[[:space:]]*IdentityFile)' ~/.ssh/config 2>/dev/null || true
-          echo "SSH_CONFIG_END"
-          echo "KEYS_BEGIN"
-          find ~/.ssh /media/lgtv -maxdepth 2 -type f \( -name 'id_*' -o -name '*.pem' \) -printf '%p\n' 2>/dev/null || true
-          echo "KEYS_END"
       - name: Deploy NAS control UI
-        run: python3 tools/lab/deploy-native-launcher.py server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js
+        shell: bash
+        env:
+          SSHPASS: ${{ secrets.LGTV_NAS_SSH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          command -v sshpass >/dev/null || { echo "sshpass is required on the self-hosted runner"; exit 1; }
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.125 'mkdir -p /var/backups/lgtv-control && cp -a /opt/lgtv-control /var/backups/lgtv-control/pre-dashboard-$(date +%Y%m%d-%H%M%S)'
+          for f in server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js; do
+            sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.125 "mkdir -p /opt/lgtv-control/$(dirname "$f")"
+            sshpass -e scp -o StrictHostKeyChecking=accept-new "remote-control/$f" "root@192.168.0.125:/opt/lgtv-control/$f"
+          done
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.125 'python3 -m py_compile /opt/lgtv-control/server.py && systemctl restart lgtv-control.service && systemctl is-active lgtv-control.service && grep -q dashboard-control.js /opt/lgtv-control/static/index.html && test -s /opt/lgtv-control/static/dashboard-control.js && echo NAS_DEPLOY=PASS'
