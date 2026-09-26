@@ -35,9 +35,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "ARCHIVE_SEARCH_BEGIN"
-          find /media/lgtv /home/actions/lgtv-import -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.tgz' \) -print 2>/dev/null | head -200
-          echo "ARCHIVE_SEARCH_END"
+          echo "ARCHIVE_MATCH_BEGIN"
+          while IFS= read -r archive; do
+            case "$archive" in
+              *.zip)
+                entry="$(unzip -Z1 "$archive" 2>/dev/null | grep -m1 'CHECKPOINT-LGTV-2026-08-31.md' || true)"
+                ;;
+              *.tar.gz|*.tgz)
+                entry="$(tar -tzf "$archive" 2>/dev/null | grep -m1 'CHECKPOINT-LGTV-2026-08-31.md' || true)"
+                ;;
+              *) entry="" ;;
+            esac
+            if [ -n "$entry" ]; then
+              echo "MATCH_ARCHIVE=$archive"
+              echo "MATCH_ENTRY=$entry"
+              exit 0
+            fi
+          done < <(find /media/lgtv /home/actions/lgtv-import -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.tgz' \) -print 2>/dev/null)
+          echo "MATCH_ARCHIVE=NONE"
+          echo "ARCHIVE_MATCH_END"
 
       - name: Deploy server only
         shell: bash
