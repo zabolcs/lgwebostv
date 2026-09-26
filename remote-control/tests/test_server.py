@@ -711,6 +711,8 @@ class LauncherHomeManagerTests(unittest.TestCase):
         self.assertIn("home-short", server.LauncherHomeManager.HOME_KEY_SCRIPT)
         self.assertIn("home-long", server.LauncherHomeManager.HOME_KEY_SCRIPT)
         self.assertIn('HOME_MODE="$DIR/home-mode"', server.LauncherHomeManager.HOME_KEY_SCRIPT)
+        self.assertIn('FORCE_MODE=${LAUNCHER_HOME_FORCE_MODE:-}', server.LauncherHomeManager.HOME_KEY_SCRIPT)
+        self.assertIn('FORCE_SOURCE=${LAUNCHER_HOME_FORCE_SOURCE:-}', server.LauncherHomeManager.HOME_KEY_SCRIPT)
         self.assertIn('full) mode=full', server.LauncherHomeManager.HOME_KEY_SCRIPT)
         self.assertIn('overlay) mode=overlay', server.LauncherHomeManager.HOME_KEY_SCRIPT)
         self.assertIn('QUICK_APP=hu.szabi.launcher.quick', server.LauncherHomeManager.HOME_KEY_SCRIPT)
@@ -995,6 +997,11 @@ class RemoteBrokerManagerTests(unittest.TestCase):
         self.assertNotIn("device=LGE RCU", config)
         self.assertIn("398=ignore", config)
         self.assertIn("399=replace:400", config)
+        self.assertIn(f"{server.REMOTE_LONG_BACK_CODE}=long-action", config)
+        self.assertIn(server.REMOTE_LONG_BACK_CODE, actions)
+        self.assertIn("LAUNCHER_HOME_FORCE_MODE=full", actions[server.REMOTE_LONG_BACK_CODE])
+        self.assertIn("LAUNCHER_HOME_FORCE_SOURCE=back-long", actions[server.REMOTE_LONG_BACK_CODE])
+        self.assertIn(server.LAUNCHER_HOME_KEY, actions[server.REMOTE_LONG_BACK_CODE])
         for code in (401, 773, 787, 994, 1037, 1038):
             self.assertIn(f"{code}=action", config)
             self.assertIn(code, actions)
@@ -1105,6 +1112,10 @@ class RemoteBrokerManagerTests(unittest.TestCase):
         self.assertIn("--recover-output", server.RemoteBrokerManager.SUPERVISOR_SCRIPT)
         self.assertIn("held-key routes preserved", source)
         self.assertIn("write_key_state(code, event.value)", source)
+        self.assertIn("BIND_LONG_ACTION", source)
+        self.assertIn('!strcmp(value, "long-action")', source)
+        self.assertIn("long_action_fired[code]", source)
+        self.assertIn("Fail open", source)
         self.assertIn("sigaction(SIGHUP, &reload_action", source)
         binary_path = broker_root / "remote-broker"
         if binary_path.exists():
