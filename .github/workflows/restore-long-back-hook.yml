@@ -1,0 +1,67 @@
+name: Restore long Back hook
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/restore-long-back-hook.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          clean: false
+
+      - name: Restore previous live lginput2 hook state
+        shell: bash
+        run: |
+          set -euo pipefail
+          KNOWN="$(mktemp)"
+          trap 'rm -f "$KNOWN"' EXIT
+          ssh-keyscan -T 3 192.168.0.240 >"$KNOWN" 2>/dev/null
+          BASE=(-i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
+          SSH=(ssh -T "${BASE[@]}" root@192.168.0.240)
+          SCP=(scp -q "${BASE[@]}")
+
+          "${SSH[@]}" 'set -eu
+            test -f /var/lib/webosbrew/launcher-home/enabled
+            test "$(cat /tmp/hu.szabi.launcher.power-state 2>/dev/null)" = Active
+            test -f /tmp/hu.szabi.launcher.boot-ready
+            test ! -f /tmp/hu.szabi.launcher.power-startup
+            p=$(pidof lginput2)
+            case "$p" in ""|*[!0-9]*) exit 2;; esac
+            test "$(cat /proc/$p/comm)" = lginput2
+            test -x /media/developer/apps/usr/palm/services/org.webosbrew.inputhook.service/inputhook/ezinject
+            test -r /media/developer/apps/usr/palm/services/org.webosbrew.inputhook.service/inputhook/lginput-hook.php
+            grep -q ""773"" /home/root/.config/lginputhook/keybinds.json
+            grep -q "launcherHome" /home/root/.config/lginputhook/keybinds.json
+            mkdir -p /var/lib/webosbrew/inputhook-watchdog
+            if [ -f /var/lib/webosbrew/inputhook-watchdog/enabled ]; then echo 1 >/tmp/hu.szabi.restore-long-back.was-enabled; else echo 0 >/tmp/hu.szabi.restore-long-back.was-enabled; fi
+          '
+
+          "${SCP[@]}" tools/generated-tv-scripts/repair-home-hook.sh root@192.168.0.240:/tmp/hu.szabi.repair-home-hook.sh
+
+          "${SSH[@]}" 'set -eu
+            cp -p /var/lib/webosbrew/inputhook-watchdog/repair-home-hook.sh /var/lib/webosbrew/inputhook-watchdog/repair-home-hook.before-long-back 2>/dev/null || true
+            cp /tmp/hu.szabi.repair-home-hook.sh /var/lib/webosbrew/inputhook-watchdog/repair-home-hook.sh
+            chmod 755 /var/lib/webosbrew/inputhook-watchdog/repair-home-hook.sh
+            touch /var/lib/webosbrew/inputhook-watchdog/enabled
+            rm -f /tmp/hu.szabi.inputhook-repair-attempt
+            /var/lib/webosbrew/inputhook-watchdog/repair-home-hook.sh
+            p=$(pidof lginput2)
+            grep -q libphp /proc/$p/maps
+            if [ "$(cat /tmp/hu.szabi.restore-long-back.was-enabled)" = 0 ]; then
+              rm -f /var/lib/webosbrew/inputhook-watchdog/enabled
+            fi
+            echo HOOK_ATTACHED=PASS
+            echo WATCHDOG_PERSISTED=$(test -f /var/lib/webosbrew/inputhook-watchdog/enabled && echo yes || echo no)
+            tail -n 20 /tmp/hu.szabi.inputhook-repair-detail.log 2>/dev/null || true
+          '
