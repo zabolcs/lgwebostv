@@ -1,0 +1,21 @@
+name: Launcher live feature probe once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/launcher-live-feature-probe-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Probe loading input lock and focused camera MJPEG
+        run: node tools/lab/launcher-live-feature-probe.mjs
