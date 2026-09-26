@@ -17,7 +17,7 @@ const context = {
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('    function installTvNavigation('),source.indexOf('    function iconForApp(')), context);
 context.installTvNavigation();
-function key(kind, code, repeat=false){handlers[kind]({keyCode:code,repeat,preventDefault(){}});}
+function key(kind, code, repeat=false){handlers[kind]({keyCode:code,repeat,preventDefault(){},stopPropagation(){}});}
 for (const state of ['hidden','parked']) {
   context.document.hidden=state==='hidden'; context.parked=state==='parked';
   key('keydown',461); key('keydown',27); key('keydown',13); key('keyup',13);
@@ -26,7 +26,10 @@ assert.equal(parks,0,'A hidden or preloaded launcher cannot resume the previous 
 assert.equal(clicks,0,'Background OK must not launch the focused tile');
 context.document.hidden=false; context.parked=false;
 key('keydown',461,true); assert.equal(parks,0,'Repeated Back from an earlier surface is ignored');
-key('keydown',461); assert.equal(parks,1,'Fresh foreground Back keeps working');
+key('keydown',461); assert.equal(parks,0,'Fresh Back stays visible until release');
+key('keyup',461); assert.equal(parks,1,'Short foreground Back commits on key-up');
+key('keydown',461); key('keydown',461,true); key('keydown',461,true); key('keyup',461);
+assert.equal(parks,1,'Long Back is consumed without exposing the native Home surface');
 key('keydown',13); context.document.hidden=true; handlers.visibilitychange();
 context.document.hidden=false; handlers.visibilitychange(); key('keyup',13);
 assert.equal(clicks,0,'An OK press spanning hidden/resume must not activate a tile');
