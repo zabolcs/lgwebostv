@@ -1,0 +1,75 @@
+name: Install live long Back binding
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/install-live-long-back-binding.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install and reload long Back binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          KNOWN="$(mktemp)"
+          trap 'rm -f "$KNOWN"' EXIT
+          ssh-keyscan -T 3 192.168.0.240 >"$KNOWN" 2>/dev/null
+          SSH=(ssh -T -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" root@192.168.0.240)
+          "${SSH[@]}" 'set -eu
+            ROOT=/var/lib/webosbrew/remote-broker
+            CFG="$ROOT/bindings.conf"
+            test -f "$ROOT/enabled"
+            test "$("$ROOT/remote-broker" --version)" = "4-evdev-relay"
+            grep -qx "mode=grab" "$CFG"
+            test -x /var/lib/webosbrew/launcher-home/home-key.sh
+            cp -p "$CFG" "$CFG.before-long-back-412"
+            mkdir -p "$ROOT/actions"
+            cat >"$ROOT/actions/412.new" <<'"'"'EOF'"'"'
+#!/bin/sh
+set -eu
+export LAUNCHER_HOME_FORCE_MODE=full
+export LAUNCHER_HOME_FORCE_SOURCE=back-long
+exec /var/lib/webosbrew/launcher-home/home-key.sh
+EOF
+            chown root:root "$ROOT/actions/412.new"
+            chmod 700 "$ROOT/actions/412.new"
+            mv "$ROOT/actions/412.new" "$ROOT/actions/412"
+            grep -v "^412=" "$CFG" >"$CFG.new"
+            printf "%s\n" "412=long-action" >>"$CFG.new"
+            chown root:root "$CFG.new"
+            chmod 600 "$CFG.new"
+            "$ROOT/remote-broker" --config "$CFG.new" --check-config
+            mv "$CFG.new" "$CFG"
+            pid=$(cat /tmp/hu.szabi.remote-broker.pid 2>/dev/null || pidof remote-broker)
+            case "$pid" in ""|*[!0-9]*) cp -p "$CFG.before-long-back-412" "$CFG"; exit 2;; esac
+            rm -f /tmp/hu.szabi.remote-broker.reload
+            kill -HUP "$pid"
+            i=0
+            while [ "$i" -lt 30 ]; do
+              ack=$(cat /tmp/hu.szabi.remote-broker.reload 2>/dev/null || true)
+              [ "$ack" = "$pid" ] && break
+              /bin/usleep 100000
+              i=$((i+1))
+            done
+            [ "$(cat /tmp/hu.szabi.remote-broker.reload 2>/dev/null || true)" = "$pid" ] || {
+              cp -p "$CFG.before-long-back-412" "$CFG"
+              kill -HUP "$pid" || true
+              exit 3
+            }
+            grep -qx "412=long-action" "$CFG"
+            test -x "$ROOT/actions/412"
+            kill -0 "$pid"
+            echo "LONG_BACK_BINDING=PASS"
+            echo "BROKER_PID=$pid"
+            "$ROOT/remote-broker" --config "$CFG" --check-config
+          '
