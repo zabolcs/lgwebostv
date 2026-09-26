@@ -10,7 +10,8 @@ const context = {
   handleSettingsKey(){return false;}, parkLauncher(){parks++;},
   enterEditMode(){edits++;},
   root:{querySelector(){return null;},querySelectorAll(){return [];}},
-  document:{hidden:false, body:{classList:{contains(name){return name==='launcher-loading-active' && !!context.loadingActive;}}},
+  document:{hidden:false,
+    getElementById(id){ return id==='launcher-boot' ? {hidden:!context.loadingVisible} : null; },
     activeElement:{tagName:'BUTTON',classList:{contains(){return true;}},click(){clicks++;}},
     addEventListener(name,fn){handlers[name]=fn;}},
   global:{setTimeout(fn){let id=next++;timers.set(id,fn);return id;},clearTimeout(id){timers.delete(id);}}
@@ -26,11 +27,11 @@ for (const state of ['hidden','parked']) {
 assert.equal(parks,0,'A hidden or preloaded launcher cannot resume the previous app');
 assert.equal(clicks,0,'Background OK must not launch the focused tile');
 context.document.hidden=false; context.parked=false;
-context.loadingActive=true;
+context.loadingVisible=true;
 key('keydown',37); key('keydown',13); key('keyup',13); key('keydown',461); key('keyup',461);
 assert.equal(clicks,0,'Loading overlay must block OK app launches');
 assert.equal(parks,0,'Loading overlay must block Back navigation');
-context.loadingActive=false;
+context.loadingVisible=false;
 key('keydown',461,true); assert.equal(parks,0,'Repeated Back from an earlier surface is ignored');
 key('keydown',461); assert.equal(parks,0,'Fresh Back stays visible until release');
 key('keyup',461); assert.equal(parks,1,'Short foreground Back commits on key-up');
