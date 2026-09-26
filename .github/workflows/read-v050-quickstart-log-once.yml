@@ -29,6 +29,11 @@ jobs:
             echo GUARD_SHA=$(sha256sum /var/lib/webosbrew/launcher-home/guard.sh 2>/dev/null | awk "{print \\$1}")
             echo GUARD_PID=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true)
             echo POWER_STATE_FILE=$(cat /tmp/hu.szabi.launcher.power-state 2>/dev/null || true)
+            echo EIM_LIVE_MOUNT=$(mountpoint -q /var/lib/eim && echo yes || echo no)
+            echo EIM_FROZEN_MOUNT=$(mountpoint -q /var/lib/webosbrew/launcher-eim/frozen-view && echo yes || echo no)
+            echo EIM_LAST_GOOD=$([ -f /var/lib/webosbrew/launcher-eim/last-good ] && echo yes || echo no)
+            echo EIM_BOOT_PENDING=$([ -e /var/lib/webosbrew/launcher-eim/boot-pending ] && echo yes || echo no)
+            echo EIM_DISABLED_FAILSAFE=$([ -e /var/lib/webosbrew/launcher-eim/disabled-failsafe ] && echo yes || echo no)
             luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"hu.szabi.launcher\"}" 2>/dev/null || true
             luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"hu.szabi.launcher.quick\"}" 2>/dev/null || true
             luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"hu.szabi.launcher.overlay\"}" 2>/dev/null || true
