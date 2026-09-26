@@ -31,31 +31,40 @@ jobs:
           KEY=/media/lgtv/id_rsa
           test -f "$KEY"
           KNOWN="$(mktemp)"
-          trap 'rm -f "$KNOWN"' EXIT
+          CT_SCRIPT="$(mktemp)"
+          trap 'rm -f "$KNOWN" "$CT_SCRIPT"' EXIT
           ssh-keyscan -T 3 "$PVE" >"$KNOWN" 2>/dev/null
           SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "root@$PVE")
           SCP=(scp -q -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
           "${SSH[@]}" true
-          BACKUP="$("${SSH[@]}" "pct exec 125 -- sh -c 'mkdir -p /var/backups/lgtv-control && mktemp -d /var/backups/lgtv-control/launcher-webhook.XXXXXX'")"
-          test -n "$BACKUP"
+          cat >"$CT_SCRIPT" <<'SH'
+          #!/bin/sh
+          set -eu
+          BACKUP="$(mkdir -p /var/backups/lgtv-control && mktemp -d /var/backups/lgtv-control/launcher-webhook.XXXXXX)"
           echo "Rollback: $BACKUP"
-          "${SSH[@]}" "pct exec 125 -- cp -p /opt/lgtv-control/server.py '$BACKUP/server.py'"
+          cp -p /opt/lgtv-control/server.py "$BACKUP/server.py"
+          rollback() {
+            echo "Server deploy failed; rolling back to $BACKUP" >&2
+            cp -p "$BACKUP/server.py" /opt/lgtv-control/server.py
+            systemctl restart lgtv-control.service || true
+          }
+          trap rollback EXIT HUP INT TERM
+          python3 -m py_compile /tmp/lgtv-control-server.py
+          install -o root -g root -m 0755 /tmp/lgtv-control-server.py /opt/lgtv-control/server.py
+          systemctl restart lgtv-control.service
+          sleep 2
+          systemctl is-active --quiet lgtv-control.service
+          python3 - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen("http://127.0.0.1:8765/api/health", timeout=5) as response:
+              payload = json.load(response)
+          assert payload.get("ok") is True, payload
+          print("health=" + json.dumps(payload, separators=(",", ":")))
+          PY
+          grep -q 'def send_launcher_webhook' /opt/lgtv-control/server.py
+          trap - EXIT HUP INT TERM
+          echo DEPLOY_LAUNCHER_CONTROL=PASS
+          SH
           "${SCP[@]}" remote-control/server.py "root@$PVE:/tmp/lgtv-control-server.py"
-          "${SSH[@]}" "pct push 125 /tmp/lgtv-control-server.py /tmp/lgtv-control-server.py"
-          "${SSH[@]}" "pct exec 125 -- sh -c 'set -eu
-            python3 -m py_compile /tmp/lgtv-control-server.py
-            install -o root -g root -m 0755 /tmp/lgtv-control-server.py /opt/lgtv-control/server.py
-            if ! systemctl restart lgtv-control.service; then
-              cp -p "$BACKUP/server.py" /opt/lgtv-control/server.py
-              systemctl restart lgtv-control.service
-              exit 1
-            fi
-            sleep 2
-            if ! systemctl is-active --quiet lgtv-control.service || ! python3 -c "import json,urllib.request; d=json.load(urllib.request.urlopen(\"http://127.0.0.1:8765/api/health\",timeout=5)); assert d.get(\"ok\") is True"; then
-              cp -p "$BACKUP/server.py" /opt/lgtv-control/server.py
-              systemctl restart lgtv-control.service
-              exit 1
-            fi
-            grep -q "def send_launcher_webhook" /opt/lgtv-control/server.py
-            echo DEPLOY_LAUNCHER_CONTROL=PASS'
-          "
+          "${SCP[@]}" "$CT_SCRIPT" "root@$PVE:/tmp/deploy-lgtv-control.sh"
+          "${SSH[@]}" "pct push 125 /tmp/lgtv-control-server.py /tmp/lgtv-control-server.py && pct push 125 /tmp/deploy-lgtv-control.sh /tmp/deploy-lgtv-control.sh && pct exec 125 -- chmod 700 /tmp/deploy-lgtv-control.sh && pct exec 125 -- /tmp/deploy-lgtv-control.sh"
