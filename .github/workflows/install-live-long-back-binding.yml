@@ -34,13 +34,7 @@ jobs:
             test -x /var/lib/webosbrew/launcher-home/home-key.sh
             cp -p "$CFG" "$CFG.before-long-back-412"
             mkdir -p "$ROOT/actions"
-            cat >"$ROOT/actions/412.new" <<'"'"'EOF'"'"'
-#!/bin/sh
-set -eu
-export LAUNCHER_HOME_FORCE_MODE=full
-export LAUNCHER_HOME_FORCE_SOURCE=back-long
-exec /var/lib/webosbrew/launcher-home/home-key.sh
-EOF
+            printf "%s\\n" "#!/bin/sh" "set -eu" "export LAUNCHER_HOME_FORCE_MODE=full" "export LAUNCHER_HOME_FORCE_SOURCE=back-long" "exec /var/lib/webosbrew/launcher-home/home-key.sh" >"$ROOT/actions/412.new"
             chown root:root "$ROOT/actions/412.new"
             chmod 700 "$ROOT/actions/412.new"
             mv "$ROOT/actions/412.new" "$ROOT/actions/412"
