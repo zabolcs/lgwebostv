@@ -25,4 +25,7 @@ candidate.closest = () => null;
 assert.strictEqual(context.belongsAtPageTop(candidate, rows[0]), true);
 assert.strictEqual(context.belongsAtPageTop(candidate, rows[1]), true);
 assert.strictEqual(context.belongsAtPageTop(candidate, rows[2]), false);
+assert.ok(/function directPresetMjpeg\(preset\)/.test(source), 'focused camera preview must have a direct MJPEG helper');
+assert.ok(/button\.addEventListener\('focus'[\s\S]*?}, 1000\);/.test(source), 'camera MJPEG promotion must wait one second of stable focus');
+assert.ok(/button\.addEventListener\('blur'[\s\S]*?image\.src = cacheBust\(source\)/.test(source), 'camera MJPEG must stop and restore snapshot on blur');
 console.log('launcher startup focus tests: PASS');
