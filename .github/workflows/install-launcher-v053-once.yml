@@ -43,6 +43,7 @@ jobs:
           chmod 600 "$TMP/id_rsa"
           ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
           SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          SSH_HOST=192.168.0.240
           SCP=(scp -q -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts")
 
           FG_BEFORE="$("${SSH[@]}" "luna-send -t 1 -f -w 1200 luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>&1" || true)"
@@ -57,10 +58,10 @@ jobs:
           echo "ROLLBACK=$BACKUP"
           "${SSH[@]}" "tar -czf '$BACKUP/apps.tgz' -C /media/developer/apps/usr/palm/applications hu.szabi.launcher hu.szabi.launcher.quick hu.szabi.launcher.overlay && cp -p /var/lib/webosbrew/launcher-home/guard.sh '$BACKUP/guard.sh'"
 
-          "${SCP[@]}" scripts/install-local-on-tv.sh "$STAGE/install.sh"
-          "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$STAGE/guard.sh"
+          "${SCP[@]}" scripts/install-local-on-tv.sh "root@$SSH_HOST:$STAGE/install.sh"
+          "${SCP[@]}" tools/generated-tv-scripts/guard.sh "root@$SSH_HOST:$STAGE/guard.sh"
           for pkg in             build/hu.szabi.launcher_0.3.13_all.ipk             build/hu.szabi.launcher.quick_0.3.13_all.ipk             build/hu.szabi.launcher.overlay_0.3.13_all.ipk; do
-            "${SCP[@]}" "$pkg" "$STAGE/$(basename "$pkg")"
+            "${SCP[@]}" "$pkg" "root@$SSH_HOST:$STAGE/$(basename "$pkg")"
           done
 
           for pkg in             hu.szabi.launcher_0.3.13_all.ipk             hu.szabi.launcher.quick_0.3.13_all.ipk             hu.szabi.launcher.overlay_0.3.13_all.ipk; do
