@@ -166,9 +166,15 @@ for (const step of remoteSteps) {
   state.liveMs = Date.now() - liveStarted;
   state.elapsedMs = dispatchMs + state.liveMs;
   remoteNav.push(state);
-  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1000 || state.dispatchMs > 500) throw new Error('REMOTE_NAV_FAIL_' + step.index);
+  console.log('REMOTE_STEP_' + step.index + '=' + JSON.stringify(state));
 }
 console.log('REMOTE_NAV=' + JSON.stringify(remoteNav));
+for (let i = 0; i < remoteNav.length; i += 1) {
+  const state = remoteNav[i];
+  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1000 || state.dispatchMs > 500) {
+    throw new Error('REMOTE_NAV_FAIL_' + remoteSteps[i].index + '=' + JSON.stringify(state));
+  }
+}
 
 const first = await focusAndMeasure(0);
 console.log('FOCUS_1=' + JSON.stringify(first));
