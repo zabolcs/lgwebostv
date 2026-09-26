@@ -4,12 +4,16 @@ on:
   push:
     branches: [develop]
     paths:
+      - 'apps/camera-viewer/**'
+      - 'tools/lab/deploy-current-camera-viewer.py'
+      - 'scripts/build-all.py'
+      - 'scripts/install-local-on-tv.sh'
       - '.github/workflows/deploy-current-camera-viewer.yml'
 
 permissions:
   contents: read
 
-# stable deploy v4
+# stable deploy v5
 
 jobs:
   deploy:
