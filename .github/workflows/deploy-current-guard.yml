@@ -32,13 +32,26 @@ jobs:
           SSH=(ssh -T -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" root@192.168.0.240)
           "${SSH[@]}" "luna-send-pub -n 1 -w 3000 -f luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.home\",\"params\":{}}' >/dev/null"
           ok=0
+          last=""
           for i in {1..20}; do
             out="$("${SSH[@]}" "luna-send -n 1 -w 1500 -f luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>/dev/null || true")"
+            last="$out"
             if grep -Eq '"appId"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher([.]overlay)?"' <<<"$out"; then
               ok=1
               break
             fi
             sleep 0.15
           done
-          test "$ok" -eq 1
+          if [ "$ok" -ne 1 ]; then
+            echo "FOREGROUND_FINAL=$last"
+            "${SSH[@]}" 'for f in enabled home-mode full-presentation; do printf "%s=" "$f"; cat "/var/lib/webosbrew/launcher-home/$f" 2>/dev/null || echo missing; done
+              for f in power-state boot-ready power-startup wake-signal home-active allow-home full-close-suppress foreground last-launch; do
+                p="/tmp/hu.szabi.launcher.$f"
+                if [ -e "$p" ]; then printf "%s=" "$f"; cat "$p" 2>/dev/null || echo present; else echo "$f=missing"; fi
+              done
+              echo "GUARD_PID=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || echo missing)"
+              echo "--- wake log tail ---"
+              tail -n 40 /tmp/hu.szabi.launcher-wake.log 2>/dev/null || true'
+            exit 1
+          fi
           echo FACTORY_HOME_REPLACEMENT=PASS
