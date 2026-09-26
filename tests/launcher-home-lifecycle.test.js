@@ -9,13 +9,14 @@ var source = fs.readFileSync(path.join(__dirname, '..', 'apps', 'launcher', 'app
 function checkHost(host) {
 var now = 1000;
 var listeners = {};
-var calls = { closeQuick: 0, resume: 0, setViewMode: 0, park: 0 };
+var calls = { closeQuick: 0, resume: 0, setViewMode: 0, park: 0, loading: 0 };
 var initOptions = null;
 var lifecycleOrder = [];
 var parked = false;
 var timers = [];
 var controller = {
   prepareResume: function () { lifecycleOrder.push('cancel-old-hide'); },
+  beginResumeLoading: function (minimumMs) { calls.loading += 1; calls.loadingMinimumMs = minimumMs; lifecycleOrder.push('loading'); },
   isQuickOpen: function () { return host === 'quick' && !parked; },
   closeQuick: function () { calls.closeQuick += 1; parked = true; },
   park: function () { calls.park += 1; parked = true; },
@@ -146,6 +147,12 @@ context.PalmSystem.isActivated = true;
 lifecycleOrder.length = 0;
 emit('webOSRelaunch', homeEvent('default-home-guard', null));
 assert(!lifecycleOrder.includes('activate'), 'SAM-activated card and popup must not be activated twice');
+assert.strictEqual(calls.loading, 0, 'normal Home relaunch must not show the Quick Start loading gate');
+lifecycleOrder.length = 0;
+emit('webOSRelaunch', homeEvent('quick-start-wam-full', null));
+assert.strictEqual(calls.loading, 1, 'Quick Start warm relaunch shows the loading gate');
+assert.strictEqual(calls.loadingMinimumMs, 1600, 'Quick Start loading has a short minimum display time');
+assert(lifecycleOrder.indexOf('loading') < lifecycleOrder.indexOf('resume'), 'loading gate is armed before UI resume work');
 emit('visibilitychange', {});
 assert(calls.resume > 0);
 }
