@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# stable deploy v3
+# stable deploy v4
 
 jobs:
   deploy:
