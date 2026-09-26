@@ -1,0 +1,20 @@
+name: Read EIM launcher state
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/read-eim-launcher-state.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: python3 tools/lab/read-eim-launcher-state.py
