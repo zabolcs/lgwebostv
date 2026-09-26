@@ -50,4 +50,13 @@ jobs:
           set -euo pipefail
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
           test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
-          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python3 tools/lab/deploy-native-launcher.py server.py
+          PARAMIKO_DIR="$(find /home/actions/lgtv-runner/_work/_tool/Python -type d -path '*/site-packages/paramiko' -print -quit 2>/dev/null || true)"
+          test -n "$PARAMIKO_DIR" || { echo "Paramiko runner environment not found" >&2; exit 1; }
+          PARAMIKO_SITE="$(dirname "$PARAMIKO_DIR")"
+          PYROOT="$(printf '%s\n' "$PARAMIKO_SITE" | sed -E 's#/lib/python[0-9.]+/site-packages$##')"
+          PYTHON="$PYROOT/bin/python3"
+          test -x "$PYTHON"
+          "$PYTHON" -c 'import paramiko'
+          echo "Using runner Python: $PYTHON"
+          echo "Using remote helper: $REMOTE_PY"
+          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" tools/lab/deploy-native-launcher.py server.py
