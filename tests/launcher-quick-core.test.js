@@ -119,6 +119,12 @@ assert.ok(uiSource.includes('scheduleFullViewWork') && uiSource.includes("mode =
 assert.ok(uiSource.includes('hu.szabi.launcher.wallpaper-state.v1') && uiSource.includes('applyRememberedWallpaper()'), 'Full mode restores the last wallpaper before deferred work');
 assert.ok(uiSource.includes('selectedAt + intervalMs - Date.now()') && !uiSource.includes('wallpaperIndex ='), 'Wallpaper rotation follows persisted elapsed time instead of render count');
 assert.ok(uiSource.includes("preview.setAttribute('data-preview-url'") && uiSource.includes('preview.__launcherRefresh'), 'Quick camera network loading is deferred to the preview scheduler');
+assert.ok(uiSource.includes("var quickLiveMjpegUrl = mode === 'tv' ? directPresetMjpeg(preset) : ''") &&
+  uiSource.includes("liveImage.setAttribute('data-live-mjpeg', quickLiveMjpegUrl)"),
+  'Quick camera focus promotes the snapshot to the same direct MJPEG live layer as full mode');
+assert.ok(uiSource.includes("['hourly', '36 óra'], ['weekly', 'Heti'], ['refresh', '↻ Frissítés']") &&
+  uiSource.includes("data-weather-control") && uiSource.includes("requestWeatherFresh()"),
+  'Quick weather exposes a remote-navigable manual refresh that bypasses the one-hour cache');
 assert.ok(pythonBuildSource.includes('"launcher-quick-core.js"'));
 assert.ok(pythonBuildSource.includes('"launcher-cache.js"'));
 assert.ok(pythonBuildSource.includes('"launcher-host.js"'));

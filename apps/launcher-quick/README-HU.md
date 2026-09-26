@@ -9,3 +9,9 @@ runtime ebből olvassa a `window.__LAUNCHER_HOST__` objektum `host` (`full`, `fu
 `appId` mezőjét. A könyvtárba ne kerüljön másolat az `apps/launcher` runtime-fájljaiból.
 
 A natív elrejtés és a meleg újranyitás korlátait a [közös launcher dokumentációja](../launcher/README-HU.md) írja le.
+
+
+## 0.3.27
+
+- A gyorsindító Kamera kategóriájában a kijelölt snapshot 1 másodperc stabil fókusz után közvetlen go2rtc MJPEG élőképre vált, jobb alsó `LIVE` jelzéssel; fókuszvesztéskor az élő kapcsolat azonnal leáll.
+- Az Időjárás nézet `↻ Frissítés` gombja távirányítóval is elérhető, és kézi frissítéskor megkerüli az egyórás helyi cache-t.

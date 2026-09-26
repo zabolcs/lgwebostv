@@ -169,6 +169,7 @@
     var quickDrilldown = null;
     var quickWeatherView = 'hourly';
     var quickWeatherTabFocused = false;
+    var quickWeatherControl = 'hourly';
     var quickDiagnosticsCache = null;
     var quickSpecialLoadToken = 0;
     var quickFullOverlayReturn = false;
@@ -395,13 +396,16 @@
         global.localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ version: 1, savedAt: Date.now(), result: result }));
       } catch (ignore) {}
     }
-    function requestWeatherCached() {
-      var cached = readWeatherCache(false);
-      if (cached) { weatherData = cached.result.weather; return Promise.resolve(cached.result); }
+    function requestWeatherFresh() {
       return request('/api/launcher/weather', 'GET').then(function (result) {
         if (result.enabled && result.weather) rememberWeather(result);
         return result;
-      }, function (error) {
+      });
+    }
+    function requestWeatherCached() {
+      var cached = readWeatherCache(false);
+      if (cached) { weatherData = cached.result.weather; return Promise.resolve(cached.result); }
+      return requestWeatherFresh().catch(function (error) {
         var stale = readWeatherCache(true);
         if (stale) { weatherData = stale.result.weather; return stale.result; }
         throw error;
@@ -886,7 +890,12 @@
       var liveImage = activeLivePreview.image;
       var liveBadge = activeLivePreview.badge;
       activeLivePreview = null;
-      if (liveImage && liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
+      if (liveImage) {
+        liveImage.onload = null;
+        liveImage.onerror = null;
+        liveImage.removeAttribute('src');
+        if (liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
+      }
       if (liveBadge && liveBadge.parentNode) liveBadge.parentNode.removeChild(liveBadge);
     }
     function localImageKey(kind, id) { return 'hu.szabi.launcher.image.' + kind + '.' + String(id || '').replace(/[^A-Za-z0-9._-]/g, '-'); }
@@ -1150,7 +1159,7 @@
       if (quickDrilldown) {
         selector = '.launcher-quick-tile[data-quick-index="' + String(quickDrilldown.index || 0) + '"]';
       } else if (quickWeatherTabFocused) {
-        selector = '.launcher-quick-tab.active';
+        selector = '.launcher-quick-tab[data-weather-control="' + quickWeatherControl + '"]';
       } else if (quickState.layer === 'items') {
         var category = quickCategories[quickState.categoryIndex];
         selector = '.launcher-quick-tile[data-quick-index="' + String(quickState.itemIndices[category.id] || 0) + '"]';
@@ -1201,12 +1210,20 @@
       var tabs = root.querySelector('.launcher-quick-tabs');
       if (!tabs) return;
       tabs.textContent = ''; tabs.hidden = false;
-      [['hourly', '36 óra'], ['weekly', 'Heti']].forEach(function (entry) {
+      [['hourly', '36 óra'], ['weekly', 'Heti'], ['refresh', '↻ Frissítés']].forEach(function (entry) {
         var button = text(document.createElement('button'), entry[1]);
         button.type = 'button'; button.className = 'launcher-quick-tab';
+        button.setAttribute('data-weather-control', entry[0]);
         if (quickWeatherView === entry[0]) button.classList.add('active');
+        if (entry[0] === 'refresh') button.classList.add('launcher-quick-weather-refresh');
         button.addEventListener('click', function () {
-          quickWeatherView = entry[0]; quickWeatherTabFocused = true;
+          quickWeatherControl = entry[0];
+          quickWeatherTabFocused = true;
+          if (entry[0] === 'refresh') {
+            refreshQuickWeather();
+            return;
+          }
+          quickWeatherView = entry[0];
           renderQuickWeatherContent(weatherData); focusQuickState();
         });
         tabs.appendChild(button);
@@ -1276,6 +1293,31 @@
       });
       if (!entries.length) host.appendChild(makeQuickDataTile(0, 'Időjárás', 'Nincs adat', '', weatherIcon(weather.code)));
       focusQuickState();
+    }
+
+    function refreshQuickWeather() {
+      var loadToken = ++quickSpecialLoadToken;
+      toast('Időjárás frissítése…');
+      requestWeatherFresh().then(function (result) {
+        if (loadToken !== quickSpecialLoadToken || !currentQuickCategory() || currentQuickCategory().id !== 'quick-weather') return;
+        if (!result.enabled || !result.weather) {
+          toast('Az időjárás ki van kapcsolva.', true);
+          return;
+        }
+        weatherData = result.weather;
+        renderQuickWeatherContent(weatherData);
+        quickWeatherControl = 'refresh';
+        quickWeatherTabFocused = true;
+        focusQuickState();
+        toast('Időjárás frissítve.');
+      }, function (error) {
+        if (loadToken !== quickSpecialLoadToken) return;
+        toast(error.message || 'Az időjárás frissítése sikertelen.', true);
+        renderQuickWeatherContent(weatherData);
+        quickWeatherControl = 'refresh';
+        quickWeatherTabFocused = true;
+        focusQuickState();
+      });
     }
 
     function loadQuickWeather(loadToken) {
@@ -1359,6 +1401,34 @@
               function () { fallback.hidden = true; });
           } else preview.__launcherRefresh = function () { preview.src = cacheBust(previewSource); };
           media.appendChild(preview);
+          var quickLiveMjpegUrl = mode === 'tv' ? directPresetMjpeg(preset) : '';
+          if (quickLiveMjpegUrl) {
+            button.addEventListener('focus', function () {
+              if (previewFocusTimer) global.clearTimeout(previewFocusTimer);
+              previewFocusTimer = global.setTimeout(function () {
+                previewFocusTimer = null;
+                if (document.activeElement !== button || document.hidden || parked) return;
+                stopActiveLivePreview();
+                var liveImage = document.createElement('img');
+                liveImage.alt = '';
+                liveImage.className = 'launcher-camera-live';
+                liveImage.setAttribute('data-live-mjpeg', quickLiveMjpegUrl);
+                var liveBadge = text(document.createElement('span'), 'LIVE');
+                liveBadge.className = 'launcher-camera-live-badge';
+                media.appendChild(liveImage);
+                media.appendChild(liveBadge);
+                activeLivePreview = { button: button, image: liveImage, badge: liveBadge };
+                liveImage.onerror = function () {
+                  if (activeLivePreview && activeLivePreview.image === liveImage) stopActiveLivePreview();
+                };
+                liveImage.src = quickLiveMjpegUrl;
+              }, 1000);
+            });
+            button.addEventListener('blur', function () {
+              if (previewFocusTimer) { global.clearTimeout(previewFocusTimer); previewFocusTimer = null; }
+              if (activeLivePreview && activeLivePreview.button === button) stopActiveLivePreview();
+            });
+          }
           source = '';
         }
       }
@@ -1490,13 +1560,19 @@
         var weatherTabs = root.querySelector('.launcher-quick-tabs .launcher-quick-tab');
         if (activeCategory && activeCategory.id === 'quick-weather' && (weatherTabs || quickWeatherTabFocused)) {
           if (quickWeatherTabFocused) {
-            if (intent === 'left' || intent === 'right') { quickWeatherView = quickWeatherView === 'hourly' ? 'weekly' : 'hourly'; renderQuickWeatherContent(weatherData); focusQuickState(); return; }
+            if (intent === 'left' || intent === 'right') {
+              var weatherControls = ['hourly', 'weekly', 'refresh'];
+              var weatherControlIndex = Math.max(0, weatherControls.indexOf(quickWeatherControl));
+              weatherControlIndex = (weatherControlIndex + (intent === 'left' ? -1 : 1) + weatherControls.length) % weatherControls.length;
+              quickWeatherControl = weatherControls[weatherControlIndex];
+              focusQuickState(); return;
+            }
             if (intent === 'up') { quickWeatherTabFocused = false; quickState.layer = 'categories'; focusQuickState(); return; }
             if (intent === 'down') { quickWeatherTabFocused = false; quickState.layer = 'items'; quickState.itemIndices[activeCategory.id] = 0; focusQuickState(); return; }
           } else if (quickState.layer === 'categories' && intent === 'down' && weatherTabs) {
-            quickWeatherTabFocused = true; focusQuickState(); return;
+            quickWeatherControl = quickWeatherView; quickWeatherTabFocused = true; focusQuickState(); return;
           } else if (quickState.layer === 'items' && intent === 'up' && weatherTabs) {
-            quickWeatherTabFocused = true; focusQuickState(); return;
+            quickWeatherControl = quickWeatherView; quickWeatherTabFocused = true; focusQuickState(); return;
           }
         }
         if (quickState.layer === 'categories' && intent === 'down' && activeCategory) quickState.itemIndices[activeCategory.id] = 0;
@@ -1508,7 +1584,11 @@
       }
       if (code === 13 && !event.repeat) {
         event.preventDefault(); event.stopPropagation();
-        if (quickWeatherTabFocused) return;
+        if (quickWeatherTabFocused) {
+          var weatherControlButton = root.querySelector('.launcher-quick-tab[data-weather-control="' + quickWeatherControl + '"]');
+          if (weatherControlButton && typeof weatherControlButton.click === 'function') weatherControlButton.click();
+          return;
+        }
         if (quickDrilldown) {
           var selectedApp = quickAllAppItems()[quickDrilldown.index || 0]; if (selectedApp) launch(selectedApp, true); return;
         }
