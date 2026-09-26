@@ -59,7 +59,7 @@ body.launcher-admin-enabled main{width:min(1480px,100%)}#page-launcher{width:100
 .launcher-tv-body .launcher-strip{padding-left:0}.launcher-tv-body .launcher-strip>:first-child{margin-left:22px;transform-origin:center center}
 .launcher-tv-body .launcher-row[data-row="apps"] .launcher-strip>.launcher-tile:first-child{transform-origin:center center}
 .launcher-setting-toggle{display:flex;align-items:center;gap:10px;margin:14px 0;padding:13px 15px;border-radius:12px;color:#dff5ff;background:#10283b;font-weight:700}.launcher-setting-toggle input{width:22px;height:22px}.launcher-setting-toggle select{min-width:108px;min-height:42px;margin-left:auto;padding:7px 12px;border:1px solid #456985;border-radius:9px;color:#fff;background:#17344b;font:inherit}
-.launcher-resume-icon{display:block;width:19px;height:19px;object-fit:contain}
+.launcher-resume-icon{display:block;width:19px!important;height:19px!important;max-width:19px!important;max-height:19px!important;flex:0 0 19px!important;object-fit:contain}.launcher-resume-glyph,.launcher-refresh-glyph{display:grid;width:20px;height:20px;flex:0 0 20px;place-items:center;font-weight:900;line-height:20px}.launcher-resume-glyph{font-size:13px}.launcher-refresh-glyph{font-size:20px}
 .launcher-tv-body .launcher-content{padding:44px 52px 42px}.launcher-tv-body .launcher-top{margin-bottom:30px}.launcher-tv-body .launcher-rows{margin-top:4px}
 /* Motion and paint effects are independent preferences in both launcher views. */
 .launcher-motion-disabled *,.launcher-motion-disabled *::before,.launcher-motion-disabled *::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
