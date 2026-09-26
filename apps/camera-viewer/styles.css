@@ -1035,3 +1035,40 @@ select {
 }
 
 .camera-tile.is-live .tile-state{display:none!important}
+
+
+/* webOS performance mode: keep focus changes compositor-cheap. */
+* {
+  animation: none !important;
+  transition: none !important;
+}
+
+.camera-tile,
+.camera-tile:focus {
+  transform: none !important;
+}
+
+.camera-tile {
+  box-shadow: none !important;
+}
+
+.camera-tile:focus {
+  box-shadow: 0 0 0 3px rgba(117, 216, 255, 0.42) !important;
+}
+
+.camera-feature,
+.viewer-heading,
+.viewer-mode,
+.viewer-audio,
+.viewer-close,
+.settings-panel,
+.settings-card {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.camera-grid-live-badge::before {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
