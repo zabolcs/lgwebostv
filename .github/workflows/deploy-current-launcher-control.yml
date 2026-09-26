@@ -25,4 +25,8 @@ jobs:
         run: python3 -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
 
       - name: Deploy server only
-        run: python3 tools/lab/deploy-native-launcher.py server.py
+        run: |
+          REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
+          test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
+          echo "Using remote helper: $REMOTE_PY"
+          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python3 tools/lab/deploy-native-launcher.py server.py
