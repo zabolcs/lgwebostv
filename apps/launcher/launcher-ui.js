@@ -786,6 +786,11 @@
       document.addEventListener('webOSRelaunch', resetRemotePress);
       document.addEventListener('keydown', function (event) {
         if (document.hidden || parked) { resetRemotePress(); return; }
+        if (document.body.classList.contains('launcher-loading-active')) {
+          event.preventDefault(); event.stopPropagation();
+          resetRemotePress();
+          return;
+        }
         if (event.repeat && (event.keyCode === 461 || event.keyCode === 27)) {
           event.preventDefault(); event.stopPropagation();
           backHeld = true;
@@ -847,6 +852,11 @@
       });
       document.addEventListener('keyup', function (event) {
         if (document.hidden || parked) { resetRemotePress(); return; }
+        if (document.body.classList.contains('launcher-loading-active')) {
+          event.preventDefault(); event.stopPropagation();
+          resetRemotePress();
+          return;
+        }
         if (event.keyCode === 461 || event.keyCode === 27) {
           event.preventDefault(); event.stopPropagation();
           var commitBack = backPressed && !backHeld;
