@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# stress v4
+# stress v5
 
 jobs:
   probe:
