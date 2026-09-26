@@ -1,6 +1,6 @@
 {
   "id": "hu.szabi.launcher",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "vendor": "Szabolcs",
   "type": "web",
   "main": "index.html",
