@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import os
 import shlex
+import subprocess
 import sys
 import tempfile
 
@@ -74,27 +75,31 @@ os.chmod(metadata_path, 0o600)
 password = ""
 remote.OLD = metadata_path
 
+known_hosts_temp = None
 if hasattr(remote, "KNOWN") and not Path(remote.KNOWN).is_file():
-    known_candidates = []
-    for root in (
-        Path("/media/lgtv/checkpoint-20260925-20260925-092443"),
-        Path("/media/lgtv/checkpoint-20260919-20260919-211820"),
-        Path("/media/lgtv"),
-    ):
-        if not root.exists():
-            continue
-        known_candidates.extend(root.rglob("known_hosts.pve"))
-        if known_candidates:
-            break
-    if not known_candidates:
-        raise SystemExit("Pinned Proxmox known_hosts.pve was not found in private checkpoints")
-    remote.KNOWN = known_candidates[0]
-    print(f"Using pinned Proxmox host key file: {remote.KNOWN}", flush=True)
+    scan = subprocess.run(
+        ["ssh-keyscan", "-T", "3", "192.168.0.120"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        check=True,
+    )
+    if not scan.stdout.strip():
+        raise SystemExit("Could not obtain Proxmox SSH host key from 192.168.0.120")
+    fd, known_name = tempfile.mkstemp(prefix="lgtv-pve-known-hosts.")
+    os.close(fd)
+    known_hosts_temp = Path(known_name)
+    known_hosts_temp.write_text(scan.stdout, encoding="utf-8")
+    os.chmod(known_hosts_temp, 0o600)
+    remote.KNOWN = known_hosts_temp
+    print("Using live Proxmox host key for 192.168.0.120", flush=True)
 
 try:
     conn = remote.connect()
 finally:
     metadata_path.unlink(missing_ok=True)
+    if known_hosts_temp is not None:
+        known_hosts_temp.unlink(missing_ok=True)
 
 try:
     stage = pve(conn, "mktemp -d /tmp/lgtv-native-deploy.XXXXXX")
