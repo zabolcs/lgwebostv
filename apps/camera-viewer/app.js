@@ -15,7 +15,7 @@
   var DEFAULT_PREVIEW_INTERVAL_SECONDS = 60;
   var GRID_SNAPSHOT_STAGGER_MS = 9000;
   var GRID_CACHE_WARM_STAGGER_MS = 150;
-  var GRID_LIVE_FOCUS_DELAY_MS = 800;
+  var GRID_LIVE_FOCUS_DELAY_MS = 1000;
   var GRID_LIVE_RETRY_DELAY_MS = 1800;
   var FULLSCREEN_HANDOFF_DELAY_MS = 160;
   var SNAPSHOT_CACHE_MAX_AGE = '24h';
@@ -666,17 +666,10 @@
   }
 
   function startLegacyScreenGuard() {
-    if (!ui.screenGuard || state.suspended || !state.profiles.length) return;
-    var profile = state.profiles[0];
-    var source = gatewayOrigin(profile, true) + '/screen-guard.mp4';
-    if (ui.screenGuard.getAttribute('src') !== source) ui.screenGuard.src = source;
-    ui.screenGuard.muted = true;
-    ui.screenGuard.loop = true;
-    var result;
-    try { result = ui.screenGuard.play(); } catch (error) { result = null; }
-    if (result && typeof result.catch === 'function') result.catch(function () {
-      showMessage('A képernyőkímélő-védelem videója nem indult el.');
-    });
+    // Performance mode: never start a hidden fallback video. A second video
+    // decoder can contend with the selected camera stream on older webOS TVs.
+    // Screen-saver suppression relies only on the Luna subscription.
+    stopLegacyScreenGuard();
   }
 
   function clearScreenSaverRegisterTimer() {
@@ -1032,6 +1025,19 @@
     ui.cameraGrid.style.alignContent = 'center';
   }
 
+  function gridTilePosition(index, layoutSize, hasFeatured) {
+    if (hasFeatured && index === 0) return { x: 1.5, y: 1.5 };
+    var regularIndex = hasFeatured ? index - 1 : index;
+    var free = [];
+    for (var row = 1; row <= layoutSize; row += 1) {
+      for (var column = 1; column <= layoutSize; column += 1) {
+        if (hasFeatured && row <= 2 && column <= 2) continue;
+        free.push({ x: column, y: row });
+      }
+    }
+    return free[Math.max(0, Math.min(free.length - 1, regularIndex))] || { x: 1, y: 1 };
+  }
+
   function toggleFeaturedCamera(profile) {
     if (!profile) return;
     var removing = state.settings.featuredCameraId === profile.cameraId;
@@ -1073,6 +1079,9 @@
         cell.className = 'camera-cell' + (entry.featured ? ' featured-camera' : '');
         tile.className = 'camera-tile';
         tile.setAttribute('data-profile-id', profile.id);
+        var gridPosition = gridTilePosition(index, layout.layoutSize, layout.featured);
+        tile.setAttribute('data-grid-x', String(gridPosition.x));
+        tile.setAttribute('data-grid-y', String(gridPosition.y));
         tile.setAttribute('aria-label', profile.name + ' megnyitása');
         image.alt = '';
         shade.className = 'tile-shade';
@@ -1690,14 +1699,6 @@
     return state.settings.layoutSize;
   }
 
-  function tileCenter(tile) {
-    var rect = tile.getBoundingClientRect();
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    };
-  }
-
   function directionalTileScore(from, to, keyCode) {
     var dx = to.x - from.x;
     var dy = to.y - from.y;
@@ -1736,12 +1737,19 @@
       return;
     }
 
-    var from = tileCenter(tiles[index]);
+    var from = {
+      x: Number(tiles[index].getAttribute('data-grid-x')),
+      y: Number(tiles[index].getAttribute('data-grid-y'))
+    };
     var bestTile = null;
     var bestScore = Infinity;
     for (var candidateIndex = 0; candidateIndex < tiles.length; candidateIndex += 1) {
       if (candidateIndex === index) continue;
-      var score = directionalTileScore(from, tileCenter(tiles[candidateIndex]), keyCode);
+      var to = {
+        x: Number(tiles[candidateIndex].getAttribute('data-grid-x')),
+        y: Number(tiles[candidateIndex].getAttribute('data-grid-y'))
+      };
+      var score = directionalTileScore(from, to, keyCode);
       if (score !== null && score < bestScore) {
         bestScore = score;
         bestTile = tiles[candidateIndex];
