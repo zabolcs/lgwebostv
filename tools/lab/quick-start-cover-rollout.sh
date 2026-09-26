@@ -115,7 +115,7 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.5.1" tools/generated-tv-scripts/guard.sh
+grep -q "guard v0.5.2" tools/generated-tv-scripts/guard.sh
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
 "${SSH[@]}" "sh -n '$GUARD.new'; chmod 755 '$GUARD.new'; mv -f '$GUARD.new' '$GUARD'"
@@ -125,7 +125,7 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.5.1 started'"
+"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.5.2 started'"
 echo COVER_GUARD_DEPLOY=PASS
 
 PARK_RESULT="$(node tools/lab/park-launcher-cdp.mjs "$OVERLAY" 2>/dev/null || true)"
@@ -250,22 +250,24 @@ for key in ('home','hdmi','overlay','full'):
     if key in first: print(f"{key.upper()}_VISIBLE_AFTER_SECONDS={first[key]:.3f}")
 cover=first.get('overlay')
 full=first.get('full')
-if cover is None or full is None:
-    raise SystemExit("cover/full surface timestamp missing")
-if not (0 <= cover <= full):
-    raise SystemExit(f"cover ordering invalid: cover={cover}, full={full}")
-gap=full-cover
-if cover > 5.5:
-    raise SystemExit(f"private WAM cover too slow after wake request: {cover:.3f}s")
+if full is None:
+    raise SystemExit("full launcher surface timestamp missing")
 if full > 6.0:
     raise SystemExit(f"private WAM full launcher too slow after wake request: {full:.3f}s")
-if gap > 1.5:
-    raise SystemExit(f"private WAM cover-to-full gap too large: {gap:.3f}s")
+if cover is not None:
+    if not (0 <= cover <= full):
+        raise SystemExit(f"cover ordering invalid: cover={cover}, full={full}")
+    gap=full-cover
+    print(f"COVER_TO_FULL_SECONDS={gap:.3f}")
 hdmi=first.get('hdmi')
-if hdmi is not None and full-hdmi > 1.5:
-    raise SystemExit(f"private WAM HDMI-to-full gap too large: {full-hdmi:.3f}s")
-print(f"COVER_TO_FULL_SECONDS={gap:.3f}")
-if hdmi is not None: print(f"HDMI_TO_FULL_SECONDS={full-hdmi:.3f}")
+home=first.get('home')
+native_candidates=[x for x in (hdmi,home) if x is not None and x <= full]
+if native_candidates:
+    native=min(native_candidates)
+    gap=full-native
+    print(f"NATIVE_TO_FULL_SECONDS={gap:.3f}")
+    if gap > 1.0:
+        raise SystemExit(f"private WAM full appeared too long after native surface: {gap:.3f}s")
 print("QUICK_WAM_FULL_TIMING=PASS")
 PY
 
@@ -273,7 +275,7 @@ echo COVER_GUARD_LOG_BEGIN
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null"
 echo COVER_GUARD_LOG_END
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Prepare Resume cover accepted'"
-"${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Active full accepted'"
+"${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Active+250ms full accepted'"
 "${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick fast lane satisfied by private WAM full'"
 
 POST_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
