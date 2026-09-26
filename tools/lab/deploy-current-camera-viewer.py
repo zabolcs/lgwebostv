@@ -55,6 +55,7 @@ with tempfile.TemporaryDirectory() as tmp:
     assert manifest["version"] == expected, (manifest["version"], expected)
     runtime = checked("cat /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/app.js")
     assert "DEFAULT_PREVIEW_INTERVAL_SECONDS = 60" in runtime
-    assert "setTimeout(startLivePreview, 150)" in runtime
+    assert "GRID_LIVE_FOCUS_DELAY_MS = 600" in runtime
+    assert "GRID_LIVE_RETRY_DELAY_MS = 1800" in runtime
     assert "index * 1000" in runtime
     print("CAMERA_VIEWER_CURRENT_DEPLOY=PASS version=" + expected, flush=True)
