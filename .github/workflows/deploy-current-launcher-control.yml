@@ -24,8 +24,29 @@ jobs:
       - name: Validate helper
         run: python3 -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
 
-      - name: Ensure remote helper dependency
-        run: python3 -m pip install --user --disable-pip-version-check paramiko
+      - name: Inspect legacy remote helper connection
+        run: |
+          REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
+          test -n "$REMOTE_PY"
+          REMOTE_PY="$REMOTE_PY" python3 - <<'PY'
+          import ast, os, re
+          path = os.environ["REMOTE_PY"]
+          tree = ast.parse(open(path, encoding="utf-8").read())
+          seen = set()
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                  value = node.value
+                  safe = (
+                      re.fullmatch(r"(?:10|192\.168)\.\d+\.\d+", value)
+                      or re.fullmatch(r"172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+", value)
+                      or value in {"root", "pve", "ct"}
+                      or "id_rsa" in value
+                      or "known_hosts" in value
+                  )
+                  if safe and value not in seen:
+                      seen.add(value)
+                      print(value)
+          PY
 
       - name: Deploy server only
         run: |
