@@ -1,11 +1,11 @@
-# Camera Viewer 0.3.13 – popup overlay
+# Camera Viewer 0.3.20 – popup overlay
 
 TV-re optimalizált webOS kameraalkalmazás helyi go2rtc profilokhoz. A tárolható kamerák száma nincs
 négyre korlátozva. A rács 2×2, 3×3 vagy 4×4 lehet; ha több kamera van, mint amennyi elfér, az app
 oldalakra bontja őket. A távirányító jobb nyila az utolsó csempén a következő, bal nyila az első
 csempén az előző oldalra lép.
 
-A távirányítóval kijelölt kameracsempe egy másodperc stabil fókusz után JPEG snapshotról MJPEG élőképre vált. Fókuszvesztéskor az MJPEG kapcsolat azonnal leáll, a snapshot marad háttérben, és a jobb alsó sarokban pulzáló `LIVE` jelzés mutatja az aktív élő streamet. Így gyors navigálás közben nem nyílik fölöslegesen több MJPEG kapcsolat.
+A távirányítóval kijelölt kameracsempe rövid stabil fókusz után JPEG snapshotról MJPEG élőképre vált. Egyszerre pontosan egy grid MJPEG élhet; fókuszvesztéskor a kapcsolat hard-stopot kap. A háttérképek percenként frissülnek, kameránként 9 másodperces fáziseltolással, induláskor pedig a go2rtc snapshot-cache ad képet, amíg az első frissítés megérkezik. Fullscreen nyitásakor a grid MJPEG és minden folyamatban levő snapshot kérés leáll, csak a választott fullscreen transport marad aktív.
 
 A csempék tényleges 16:9 képarányúak. A méretet az app a rendelkezésre álló szélességből és
 magasságból számolja, Chrome 79-en is működő módon, így a preview nem nyúlik el és nem vágja le
