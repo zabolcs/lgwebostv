@@ -342,6 +342,10 @@
     // clocks/previews. Visibility notifications already mean it is active.
     cancelBackgroundPark();
     if (controller && controller.prepareResume) controller.prepareResume();
+    var resumeSource = nextLaunch && String(nextLaunch.source || '');
+    if (controller && controller.beginResumeLoading && /^quick-start(?:-|$)/.test(resumeSource)) {
+      controller.beginResumeLoading(1600);
+    }
     if (event) activateLauncherSurface();
     if (controller && controller.resume) controller.resume();
     window.__launcherResumeAt = Date.now();
