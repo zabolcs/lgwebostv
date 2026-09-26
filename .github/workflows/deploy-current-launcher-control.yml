@@ -36,6 +36,27 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check --quiet paramiko
 
 
+      - name: Prepare encrypted credential transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$HOME/.cache/lgtv-deploy-transport"
+          mkdir -p "$dir"
+          chmod 700 "$dir"
+          if [ ! -f "$dir/private.pem" ]; then
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$dir/private.pem" >/dev/null 2>&1
+            chmod 600 "$dir/private.pem"
+          fi
+          openssl pkey -in "$dir/private.pem" -pubout -out "$RUNNER_TEMP/lgtv-deploy-public.pem"
+
+      - name: Upload deploy transport public key
+        uses: actions/upload-artifact@v4
+        with:
+          name: lgtv-deploy-public-key
+          path: ${{ runner.temp }}/lgtv-deploy-public.pem
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Deploy NAS control UI through Proxmox
         env:
           LGTV_REMOTE_HELPER: /media/lgtv/checkpoint-20260925-20260925-092443/source/previous-work-20260905/remote.py
