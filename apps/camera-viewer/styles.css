@@ -1034,3 +1034,5 @@ select {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(5, 14, 21, 0.78);
 }
+
+.camera-tile.is-live .tile-state{display:none!important}
