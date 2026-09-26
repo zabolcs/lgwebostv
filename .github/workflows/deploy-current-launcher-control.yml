@@ -32,6 +32,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Probe direct NAS SSH
+        shell: bash
+        run: |
+          set -u
+          for user in root szszabolcs; do
+            if ssh -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=accept-new "$user@192.168.0.223" 'echo DIRECT_SSH_OK user=$(whoami); test -d /opt/lgtv-control && echo CONTROL_DIR_OK' 2>/dev/null; then
+              echo "SSH_USER=$user" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "No key-based direct SSH login; password secret path remains required."
       - name: Deploy NAS control UI
         shell: bash
         env:
@@ -39,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           command -v sshpass >/dev/null || { echo "sshpass is required on the self-hosted runner"; exit 1; }
-          sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.223 'mkdir -p /var/backups/lgtv-control && cp -a /opt/lgtv-control /var/backups/lgtv-control/pre-dashboard-$(date +%Y%m%d-%H%M%S)'
+          sshpass -e ssh -o StrictHostKeyChecking=accept-new ${SSH_USER:-root}@192.168.0.223 'mkdir -p /var/backups/lgtv-control && cp -a /opt/lgtv-control /var/backups/lgtv-control/pre-dashboard-$(date +%Y%m%d-%H%M%S)'
           for f in server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js; do
             sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.223 "mkdir -p /opt/lgtv-control/$(dirname "$f")"
             sshpass -e scp -o StrictHostKeyChecking=accept-new "remote-control/$f" "root@192.168.0.223:/opt/lgtv-control/$f"
