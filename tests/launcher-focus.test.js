@@ -27,6 +27,7 @@ assert.strictEqual(context.belongsAtPageTop(candidate, rows[0]), true);
 assert.strictEqual(context.belongsAtPageTop(candidate, rows[1]), true);
 assert.strictEqual(context.belongsAtPageTop(candidate, rows[2]), false);
 assert.ok(/function directPresetMjpeg\(preset\)/.test(source), 'focused camera preview must have a direct MJPEG helper');
+assert.ok(/var sources = \[\s*String\(preset && preset\.content/.test(source), 'camera preset content must win over profile-derived preview URL');
 assert.ok(/button\.addEventListener\('focus'[\s\S]*?}, 1000\);/.test(source), 'camera MJPEG promotion must wait one second of stable focus');
 assert.ok(/className = 'launcher-camera-live'/.test(source), 'focused camera MJPEG must use a separate live image layer');
 assert.ok(/button\.addEventListener\('blur'[\s\S]*?stopActiveLivePreview\(\)/.test(source), 'camera MJPEG live layer must stop on blur');
