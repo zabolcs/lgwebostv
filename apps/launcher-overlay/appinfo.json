@@ -4,7 +4,7 @@
   "vendor": "Szabolcs",
   "type": "web",
   "main": "index.html",
-  "title": "Saját kezdőképernyő · overlay",
+  "title": "SzabiLauncher Overlay",
   "icon": "icon.png",
   "largeIcon": "icon-large.png",
   "splashBackground": "splash-black.png",
