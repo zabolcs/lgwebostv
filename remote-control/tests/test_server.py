@@ -1046,7 +1046,7 @@ class RemoteBrokerManagerTests(unittest.TestCase):
         }
         manager.set_enabled(True, bindings)
         action_writes = [command for command in commands if "/actions.new/" in command and "base64 -d" in command]
-        self.assertEqual(len(action_writes), len(bindings))
+        self.assertEqual(len(action_writes), len(bindings) + 1)  # protected long-Back action
         self.assertLess(max(map(len, commands)), 8192)
         self.assertTrue(manager.enabled)
 
