@@ -1,0 +1,21 @@
+name: Quick Start live probe once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/quick-start-live-probe-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run current Quick Start wake probe
+        run: bash tools/lab/quick-start-launcher-wake-test.sh
