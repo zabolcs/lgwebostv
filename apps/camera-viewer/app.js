@@ -33,6 +33,13 @@
     udvar: ['udvar', 'camera_udvar_felso_h264', 'camera_udvar_felso_preview'],
     kapu: ['kapu', 'camera_kapu_felso_h264', 'camera_kapu_felso_preview']
   };
+  var CAMERA_MJPEG_SOURCES = {
+    gyerekszoba: 'c210rtsp1_mjpeg',
+    kapu: 'camera_kapu_felso_preview',
+    kapu2: 'camera_kapu_also_preview',
+    udvar: 'camera_udvar_felso_preview',
+    udvar2: 'camera_udvar_also_preview'
+  };
 
   function makeProfileId() {
     return 'profile-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
@@ -150,7 +157,9 @@
   }
 
   function buildUrl(profile, mode) {
-    var source = mode === 'webrtc' ? profile.primarySource : profile.previewSource;
+    var source = mode === 'webrtc'
+      ? profile.primarySource
+      : (mode === 'mjpeg' ? (CAMERA_MJPEG_SOURCES[profile.cameraId] || profile.previewSource) : profile.previewSource);
     var path = mode === 'mjpeg' ? '/api/stream.mjpeg?src=' : '/api/frame.jpeg?src=';
     return gatewayOrigin(profile, false) + path + source;
   }
@@ -463,6 +472,7 @@
     FORBIDDEN_HOST: FORBIDDEN_HOST,
     DEFAULT_PROFILES: DEFAULT_PROFILES,
     CANONICAL_PROFILE_ALIASES: CANONICAL_PROFILE_ALIASES,
+    CAMERA_MJPEG_SOURCES: CAMERA_MJPEG_SOURCES,
     validateProfile: validateProfile,
     validatePlayerPath: validatePlayerPath,
     buildUrl: buildUrl,
