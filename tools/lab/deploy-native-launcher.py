@@ -9,7 +9,7 @@ sys.path.insert(0,str(ROOT/'checkpoint-original/LGTV-checkpoint-2026-09-19/tools
 import remote
 
 FILES=('server.py','lg_ssap.py','ssap_pairing.py','launcher_early.py',
-       'static/index.html','static/ssap-control.js','lgtv-launcher-early.service')
+       'static/index.html','static/ssap-control.js','static/launcher-admin.js','static/connections-ui.js','lgtv-launcher-early.service')
 selected=tuple(sys.argv[1:]) or FILES
 assert set(selected) <= set(FILES)
 def checked(client,target,command,timeout=45):
