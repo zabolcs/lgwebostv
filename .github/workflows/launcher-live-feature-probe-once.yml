@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# active surface probe v3
+# active surface probe v4
 
 jobs:
   probe:
