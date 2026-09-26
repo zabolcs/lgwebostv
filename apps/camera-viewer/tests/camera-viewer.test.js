@@ -64,7 +64,9 @@ assert.strictEqual(core.buildUrl(profile, 'snapshot'), 'http://192.168.1.10:1984
 assert.strictEqual(core.buildPlayerUrl(profile, '0123456789abcdef0123456789abcdef'),
   'http://192.168.1.10:1985/webos-player.html#src=front_h264&session=0123456789abcdef0123456789abcdef&audio=1');
 assert.ok(/&audio=0$/.test(core.buildPlayerUrl(core.validateProfile(validProfile({ audio: false })).value, '0123456789abcdef0123456789abcdef')));
-assert.deepStrictEqual(core.playbackPlan(profile), ['webrtc', 'mjpeg', 'snapshot']);
+assert.deepStrictEqual(core.playbackPlan(profile), ['mjpeg', 'webrtc', 'snapshot']);
+assert.deepStrictEqual(core.playbackPlan(profile, 'webrtc'), ['webrtc', 'mjpeg', 'snapshot']);
+assert.deepStrictEqual(core.playbackPlan(profile, 'mjpeg'), ['mjpeg', 'webrtc', 'snapshot']);
 assert.deepStrictEqual(core.playbackPlan(core.validateProfile(validProfile({ playerPath: '' })).value), ['mjpeg', 'snapshot']);
 assert.deepStrictEqual(core.screenSaverResponsePayload({
   returnValue: true, state: 'Active', timestamp: '1388518297'
@@ -252,6 +254,8 @@ assert.ok(/toggleFeaturedCamera/.test(script));
 assert.ok(/cellWidth \* 9 \/ 16/.test(script));
 assert.ok(/\.camera-feature\.is-featured::after/.test(css));
 assert.strictEqual(/<iframe\b/i.test(html), false, 'A hosted player csak teljes nézetben jöjjön létre.');
+assert.ok(/id="viewer-mode"/.test(html), 'A teljes nézetben legyen MJPEG/WebRTC váltó.');
+assert.ok(script.includes(core.FULLSCREEN_TRANSPORT_KEY), 'A teljes nézet transport választása perzisztens legyen.');
 assert.strictEqual((script.match(/createElement\('iframe'\)/g) || []).length, 1);
 assert.strictEqual(/(^|[;{\s])gap\s*:/m.test(css), false, 'Chrome 79 miatt flex-gapre és rövid gap propertyre nem támaszkodunk.');
 assert.ok(/minmax\(0, 1fr\)/.test(css));
