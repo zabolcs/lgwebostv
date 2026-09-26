@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# retry: TV recovered, measure retained full WAM
+# retry: proven timed Luna query mode
 
 jobs:
   probe:
