@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# trace v2
+# trace v3
 
 jobs:
   read:
