@@ -115,7 +115,7 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.5.2" tools/generated-tv-scripts/guard.sh
+grep -q "guard v0.4.0" tools/generated-tv-scripts/guard.sh
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
 "${SSH[@]}" "sh -n '$GUARD.new'; chmod 755 '$GUARD.new'; mv -f '$GUARD.new' '$GUARD'"
@@ -125,21 +125,8 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.5.2 started'"
+"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.4.0 started'"
 echo COVER_GUARD_DEPLOY=PASS
-
-PARK_RESULT="$(node tools/lab/park-launcher-cdp.mjs "$OVERLAY" 2>/dev/null || true)"
-echo "COVER_PARK_RESULT=$PARK_RESULT"
-python3 - "$PARK_RESULT" <<'PY'
-import json,sys
-try:
-    x=json.loads(sys.argv[1])
-except Exception:
-    raise SystemExit("cover park returned no valid result")
-raise SystemExit(0 if x.get("ok") and x.get("hidden", x.get("after",{}).get("hidden")) is not False else 1)
-PY
-"${SSH[@]}" "rm -f '$COVER_READY' /tmp/hu.szabi.launcher.quick-wam-cover.json /tmp/hu.szabi.launcher.quick-wam-attempt /tmp/hu.szabi.launcher.quick-wam-accepted /tmp/hu.szabi.launcher.full-overlay-visible"
-echo COVER_PARKED=PASS
 
 origin="$("${SSH[@]}" "cat '$DIR/control-origin' 2>/dev/null")"
 display="$("${SSH[@]}" "cat '$DIR/display-preferences.json' 2>/dev/null")"
@@ -170,17 +157,6 @@ done
 echo "COVER_PREWARM_CDP=$COVER_CDP"
 test "$READY" -eq 1
 "${SSH[@]}" "touch '$COVER_READY'"
-WAM_PAYLOAD_READY=0
-for i in $(seq 1 48); do
-  if "${SSH[@]}" "test -s /tmp/hu.szabi.launcher.quick-wam-cover.json && test -s /tmp/hu.szabi.launcher.quick-wam-full.json"; then
-    WAM_PAYLOAD_READY=1
-    echo "WAM_BOTH_PAYLOADS_READY_POLL=$i"
-    break
-  fi
-  sleep 0.25
-done
-test "$WAM_PAYLOAD_READY" -eq 1
-echo WAM_COVER_AND_FULL_PAYLOAD_READY=PASS
 echo COVER_PREWARM=PASS
 
 # Establish a worst-case visible input while keeping the prewarmed popup hidden.
@@ -250,33 +226,23 @@ for key in ('home','hdmi','overlay','full'):
     if key in first: print(f"{key.upper()}_VISIBLE_AFTER_SECONDS={first[key]:.3f}")
 cover=first.get('overlay')
 full=first.get('full')
-if full is None:
-    raise SystemExit("full launcher surface timestamp missing")
-if full > 6.0:
-    raise SystemExit(f"private WAM full launcher too slow after wake request: {full:.3f}s")
-if cover is not None:
-    if not (0 <= cover <= full):
-        raise SystemExit(f"cover ordering invalid: cover={cover}, full={full}")
-    gap=full-cover
-    print(f"COVER_TO_FULL_SECONDS={gap:.3f}")
-hdmi=first.get('hdmi')
-home=first.get('home')
-native_candidates=[x for x in (hdmi,home) if x is not None and x <= full]
-if native_candidates:
-    native=min(native_candidates)
-    gap=full-native
-    print(f"NATIVE_TO_FULL_SECONDS={gap:.3f}")
-    if gap > 1.0:
-        raise SystemExit(f"private WAM full appeared too long after native surface: {gap:.3f}s")
-print("QUICK_WAM_FULL_TIMING=PASS")
+if cover is None or full is None:
+    raise SystemExit("cover/full surface timestamp missing")
+if not (0 <= cover < full):
+    raise SystemExit(f"cover was not earlier than full: cover={cover}, full={full}")
+if cover > 6.0:
+    raise SystemExit(f"cover too slow to hide LG surface: {cover:.3f}s")
+if full-cover < 1.0:
+    raise SystemExit(f"cover lead too small: {full-cover:.3f}s")
+print(f"COVER_LEAD_SECONDS={full-cover:.3f}")
+print("QUICK_COVER_TIMING=PASS")
 PY
 
 echo COVER_GUARD_LOG_BEGIN
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null"
 echo COVER_GUARD_LOG_END
-"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Prepare Resume cover accepted'"
-"${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Active+250ms full accepted'"
-"${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick fast lane satisfied by private WAM full'"
+"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick cover accepted'"
+"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick fast lane accepted'"
 
 POST_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
 python3 - "$PRE_UPTIME" "$POST_UPTIME" <<'PY'
