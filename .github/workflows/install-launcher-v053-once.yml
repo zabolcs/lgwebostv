@@ -75,8 +75,8 @@ jobs:
           "${SSH[@]}" "touch /tmp/hu.szabi.launcher.install-handoff && cp '$STAGE/guard.sh' /var/lib/webosbrew/launcher-home/guard.sh && chmod 755 /var/lib/webosbrew/launcher-home/guard.sh"
           OLD_PID="$("${SSH[@]}" "cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true")"
           case "$OLD_PID" in ''|*[!0-9]*) ;; *) "${SSH[@]}" "kill -TERM '$OLD_PID' 2>/dev/null || true";; esac
-          "${SSH[@]}" "i=0; while [ -e /tmp/hu.szabi.launcher-home.pid ] && [ $i -lt 40 ]; do /bin/usleep 100000; i=$((i+1)); done; nohup /var/lib/webosbrew/launcher-home/guard.sh </dev/null >>/tmp/hu.szabi.launcher-home.log 2>&1 &"
-          "${SSH[@]}" "i=0; while [ $i -lt 40 ]; do grep -q 'guard v0.5.3 started' /tmp/hu.szabi.launcher-wake.log 2>/dev/null && ! test -e /tmp/hu.szabi.launcher.install-handoff && exit 0; /bin/usleep 100000; i=$((i+1)); done; exit 1"
+          "${SSH[@]}" "i=0; while [ -e /tmp/hu.szabi.launcher-home.pid ] && [ \$i -lt 40 ]; do /bin/usleep 100000; i=\$((i+1)); done; nohup /var/lib/webosbrew/launcher-home/guard.sh </dev/null >>/tmp/hu.szabi.launcher-home.log 2>&1 &"
+          "${SSH[@]}" "i=0; while [ \$i -lt 40 ]; do grep -q 'guard v0.5.3 started' /tmp/hu.szabi.launcher-wake.log 2>/dev/null && ! test -e /tmp/hu.szabi.launcher.install-handoff && exit 0; /bin/usleep 100000; i=\$((i+1)); done; exit 1"
 
           FG_AFTER="$("${SSH[@]}" "luna-send -t 1 -f -w 1200 luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>&1" || true)"
           echo "FOREGROUND_AFTER=$FG_AFTER"
