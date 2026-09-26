@@ -602,7 +602,17 @@ run_pending_tick() {
 }
 
 # START WORKER (test fixtures source only the functions above).
+INSTALL_HANDOFF=/tmp/hu.szabi.launcher.install-handoff
+handoff_active=0
+[ -f "$INSTALL_HANDOFF" ] && handoff_active=1
 rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "$LAST_LAUNCH" "$WAKE_SIGNAL" "$QUICK_WAKE_ARMED" "$QUICK_FAST_ATTEMPT"
+if [ "$handoff_active" -eq 1 ]; then
+  rm -f "$POWER_STARTUP" "$WAKE_WAIT_UNTIL" "$WAKE_RETRY_UNTIL"
+  printf '%s\n' Active >"$POWER_STATE"
+  touch "$BOOT_READY"
+  rm -f "$INSTALL_HANDOFF"
+  diagnostic 'live-install handoff: current Active session preserved'
+fi
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
