@@ -49,7 +49,37 @@ jobs:
         run: |
           set -euo pipefail
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
+          OLD_FILE="$(find /media/lgtv /home/actions/lgtv-import -type f -name 'CHECKPOINT-LGTV-2026-08-31.md' -print -quit 2>/dev/null || true)"
+          KNOWN_FILE="$(find /media/lgtv /home/actions/lgtv-import -type f -name 'known_hosts.pve' -print -quit 2>/dev/null || true)"
           test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
+          test -n "$OLD_FILE" || { echo "legacy LGTV checkpoint not found" >&2; exit 1; }
+          test -n "$KNOWN_FILE" || { echo "legacy PVE known_hosts not found" >&2; exit 1; }
+
+          PATCHED_REMOTE_DIR="$(mktemp -d)"
+          trap 'rm -rf "$PATCHED_REMOTE_DIR"' EXIT
+          REMOTE_PY="$REMOTE_PY" OLD_FILE="$OLD_FILE" KNOWN_FILE="$KNOWN_FILE" PATCHED_REMOTE_DIR="$PATCHED_REMOTE_DIR" python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          source = Path(os.environ["REMOTE_PY"]).read_text(encoding="utf-8")
+          source, old_count = re.subn(
+              r"(?m)^OLD\s*=\s*Path\([^\n]+\)\s*$",
+              "OLD = Path(" + repr(os.environ["OLD_FILE"]) + ")",
+              source,
+              count=1,
+          )
+          source, known_count = re.subn(
+              r"(?m)^KNOWN\s*=\s*[^\n]+$",
+              "KNOWN = " + repr(os.environ["KNOWN_FILE"]),
+              source,
+              count=1,
+          )
+          if old_count != 1 or known_count != 1:
+              raise SystemExit("legacy remote helper path patch failed")
+          target = Path(os.environ["PATCHED_REMOTE_DIR"]) / "remote.py"
+          target.write_text(source, encoding="utf-8")
+          print("Prepared legacy remote helper with local checkpoint paths.")
+          PY
+
           PARAMIKO_DIR="$(find /home/actions/lgtv-runner/_work/_tool/Python -type d -path '*/site-packages/paramiko' -print -quit 2>/dev/null || true)"
           test -n "$PARAMIKO_DIR" || { echo "Paramiko runner environment not found" >&2; exit 1; }
           PARAMIKO_SITE="$(dirname "$PARAMIKO_DIR")"
@@ -59,5 +89,4 @@ jobs:
           export LD_LIBRARY_PATH="$PYROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           "$PYTHON" -c 'import paramiko'
           echo "Using runner Python: $PYTHON"
-          echo "Using remote helper: $REMOTE_PY"
-          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" tools/lab/deploy-native-launcher.py server.py
+          PYTHONPATH="$PATCHED_REMOTE_DIR${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" tools/lab/deploy-native-launcher.py server.py
