@@ -77,6 +77,16 @@ const inventory = await evaluate(page, `JSON.stringify(Array.prototype.map.call(
 }))`);
 console.log('CAMERA_INVENTORY=' + inventory);
 
+for (const endpoint of ['media-overlay','camera-viewer']) {
+  try {
+    const response = await fetch('http://192.168.0.223:8765/api/' + endpoint + '/state', {signal: AbortSignal.timeout(4000)});
+    const payload = await response.json();
+    console.log('STATE_' + endpoint.toUpperCase().replace('-', '_') + '=' + JSON.stringify(payload));
+  } catch (error) {
+    console.log('STATE_' + endpoint.toUpperCase().replace('-', '_') + '_ERROR=' + String(error && error.message || error));
+  }
+}
+
 const inventoryRows = JSON.parse(inventory);
 const streamChecks = [];
 for (const camera of inventoryRows) {
