@@ -805,6 +805,7 @@
           // webOS; hiding on the first down exposed LG Home for a visible beat.
           // Short Back is committed on key-up, while long Back stays consumed.
           event.preventDefault(); event.stopPropagation();
+          if (!backPressed) backHeld = false;
           backPressed = true;
           return;
         }
