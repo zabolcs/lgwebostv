@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.5.2 guard: private-WAM cover + compositor-safe delayed retained full launcher with v0.4.0 fallback.
+# v0.5.4 guard: private-WAM cover with retryable prewarm + retained full launcher with v0.4.0 fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -23,6 +23,7 @@ QUICK_WAKE_ARMED=/tmp/hu.szabi.launcher.quick-wake-armed
 QUICK_FAST_ATTEMPT=/tmp/hu.szabi.launcher.quick-fast-attempt
 QUICK_COVER_READY=/tmp/hu.szabi.launcher.full-overlay-prewarm-ready
 QUICK_COVER_QUEUE=/tmp/hu.szabi.launcher.quick-cover-prewarm-queued
+QUICK_COVER_RETRY_AFTER=/tmp/hu.szabi.launcher.quick-cover-prewarm-retry-after
 QUICK_WAM_PAYLOAD=/tmp/hu.szabi.launcher.quick-wam-cover.json
 QUICK_WAM_ATTEMPT=/tmp/hu.szabi.launcher.quick-wam-attempt
 QUICK_WAM_ACCEPTED=/tmp/hu.szabi.launcher.quick-wam-accepted
@@ -635,17 +636,19 @@ queue_prewarm() {
   [ "$(cat "$POWER_STATE" 2>/dev/null)" = Active ] || return 0
   [ ! -f "$HOME_ACTIVE" ] || return 0
   epoch=$(cat "$ACTIVE_SINCE" 2>/dev/null)
-  if [ -f "$QUICK_COVER_READY" ] && [ ! -s "$QUICK_WAM_PAYLOAD" ]; then
-    prepare_wam_cover_payload || true
+  if [ -f "$QUICK_COVER_READY" ]; then
+    rm -f "$QUICK_COVER_QUEUE" "$QUICK_COVER_RETRY_AFTER"
+    if [ ! -s "$QUICK_WAM_PAYLOAD" ]; then
+      prepare_wam_cover_payload || true
+    fi
   fi
   if [ -n "$epoch" ] && [ ! -f "$QUICK_COVER_READY" ]; then
-    if [ "$(cat "$QUICK_COVER_QUEUE" 2>/dev/null)" = "$epoch" ]; then
-      # The cover preload is still pending (or failed). Do not start another
-      # renderer in parallel during this active epoch.
-      return 0
-    fi
-    if [ -x "$DIR/prewarm.sh" ]; then
+    cover_retry_after=$(cat "$QUICK_COVER_RETRY_AFTER" 2>/dev/null); cover_retry_after=${cover_retry_after:-0}
+    if [ "$(date +%s)" -ge "$cover_retry_after" ] && [ -x "$DIR/prewarm.sh" ]; then
+      now=$(date +%s)
       echo "$epoch" >"$QUICK_COVER_QUEUE"
+      echo $((now + 3)) >"$QUICK_COVER_RETRY_AFTER"
+      diagnostic 'quick cover prewarm attempt'
       "$DIR/prewarm.sh" cover </dev/null >>/tmp/hu.szabi.launcher-prewarm.log 2>&1 9>&-
       return 0
     fi
@@ -791,7 +794,7 @@ fi
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.5.3 started'
+diagnostic 'guard v0.5.4 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
