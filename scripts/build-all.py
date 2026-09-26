@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
 _LAUNCHER_SPLASH_CACHE: bytes | None = None
+_LAUNCHER_SPLASH_ICON_CACHE: bytes | None = None
 
 
 LAUNCHER_FILES = (
@@ -35,6 +36,7 @@ LAUNCHER_FILES = (
     "icon.png",
     "icon-large.png",
     "splash-black.png",
+    "splash-icon.png",
 )
 
 APPS = {
@@ -243,6 +245,59 @@ def launcher_splash_png() -> bytes:
     return png
 
 
+def launcher_splash_icon_png() -> bytes:
+    """Generate a transparent 256px native splash icon matching the HTML loader."""
+    global _LAUNCHER_SPLASH_ICON_CACHE
+    if _LAUNCHER_SPLASH_ICON_CACHE is not None:
+        return _LAUNCHER_SPLASH_ICON_CACHE
+
+    width = height = 256
+    gap = 18
+    cell = 76
+    total = cell * 2 + gap
+    left = (width - total) // 2
+    top = (height - total) // 2
+
+    def inside_round_rect(x: int, y: int, rx: int, ry: int, size: int, radius: int) -> bool:
+        px, py = x - rx, y - ry
+        if px < 0 or py < 0 or px >= size or py >= size:
+            return False
+        if radius <= px < size - radius or radius <= py < size - radius:
+            return True
+        qx = radius - px if px < radius else px - (size - radius - 1)
+        qy = radius - py if py < radius else py - (size - radius - 1)
+        return qx * qx + qy * qy <= radius * radius
+
+    rows: list[bytes] = []
+    for y in range(height):
+        row = bytearray((0,))
+        for x in range(width):
+            rgba = (0, 0, 0, 0)
+            for col in range(2):
+                for line in range(2):
+                    rx = left + col * (cell + gap)
+                    ry = top + line * (cell + gap)
+                    if inside_round_rect(x, y, rx, ry, cell, 14):
+                        mix = (col + line * 2) / 3
+                        rgba = (int(166 - 48 * mix), int(239 - 48 * mix), 255, 255)
+            row.extend(rgba)
+        rows.append(bytes(row))
+
+    raw = b"".join(rows)
+    def chunk(name: bytes, payload: bytes) -> bytes:
+        body = name + payload
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
+    _LAUNCHER_SPLASH_ICON_CACHE = png
+    return png
+
+
 def host_config(host: str, app_id: str) -> bytes:
     if host not in {"full", "quick", "full-overlay"}:
         raise ValueError(f"unsupported launcher host: {host}")
@@ -282,6 +337,9 @@ def build(slug: str, config: dict[str, object]) -> tuple[Path, str]:
             continue
         if filename == "splash-black.png" and source_slug == "launcher":
             files[filename] = launcher_splash_png()
+            continue
+        if filename == "splash-icon.png" and source_slug == "launcher":
+            files[filename] = launcher_splash_icon_png()
             continue
         path = appinfo_path if filename == "appinfo.json" else source / filename
         if not path.is_file():
