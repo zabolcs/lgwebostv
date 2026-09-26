@@ -11,7 +11,7 @@
   "transparent": false,
   "defaultWindowType": "card",
   "handlesRelaunch": true,
-  "noSplashOnLaunch": false,
+  "noSplashOnLaunch": true,
   "spinnerOnLaunch": false,
   "disableBackHistoryAPI": true,
   "resolution": "1920x1080",
