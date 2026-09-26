@@ -23,4 +23,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/lab/probe-focused-camera-preview.mjs
+          node tools/lab/probe-loading-input-lock.mjs
