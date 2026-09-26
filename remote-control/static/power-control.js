@@ -5,6 +5,9 @@
   var refreshButton = document.getElementById('tv-power-refresh');
   var statusNode = document.getElementById('tv-power-status');
   var busy = false;
+  var cacheKey = 'lgtv.power.last-known';
+  var lastKnown = null;
+  try { lastKnown = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (_) {}
 
   function decode(response) {
     return response.json().catch(function () { return {}; }).then(function (body) {
@@ -14,6 +17,7 @@
   }
 
   function render(power) {
+    if (power && power.state && power.state !== 'unknown') { lastKnown = { power: power, at: new Date().toLocaleTimeString('hu-HU') }; try { localStorage.setItem(cacheKey, JSON.stringify(lastKnown)); } catch (_) {} }
     var state = power && power.state ? power.state : 'unknown';
     var isOn = state === 'on' || state === 'turning_on';
     toggle.setAttribute('aria-checked', isOn ? 'true' : 'false');
@@ -42,10 +46,16 @@
       .then(decode)
       .then(function (body) { render(body.power); })
       .catch(function (error) {
-        toggle.disabled = true;
-        toggle.textContent = 'Kapcsolódási hiba';
-        statusNode.textContent = error.message;
-        statusNode.classList.add('error');
+        if (lastKnown && lastKnown.power) {
+          render(lastKnown.power);
+          statusNode.textContent = 'TV nem elérhető · utolsó ismert állapot: ' + lastKnown.at + '. ' + error.message;
+          statusNode.classList.add('error');
+        } else {
+          toggle.disabled = true;
+          toggle.textContent = 'Állapot még nem ismert';
+          statusNode.textContent = 'TV nem elérhető. ' + error.message;
+          statusNode.classList.add('error');
+        }
       });
   }
 
