@@ -1,0 +1,25 @@
+name: Deploy current Camera Viewer
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-current-camera-viewer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate Camera Viewer
+        run: |
+          node apps/camera-viewer/tests/camera-viewer.test.js
+          node apps/camera-viewer/tests/webos-player.test.js
+      - name: Deploy current Camera Viewer
+        run: python3 tools/lab/deploy-current-camera-viewer.py
