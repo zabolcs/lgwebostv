@@ -1,4 +1,4 @@
-name: Read v0.5.0 Quick Start log once
+name: Read launcher TV status and Quick Start logs
 
 on:
   push:
@@ -24,6 +24,26 @@ jobs:
           chmod 600 "$TMP/id_rsa"
           ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
           SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          echo TV_READONLY_STATUS_BEGIN
+          "${SSH[@]}" '
+            echo GUARD_SHA=$(sha256sum /var/lib/webosbrew/launcher-home/guard.sh 2>/dev/null | awk "{print \\$1}")
+            echo GUARD_PID=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true)
+            echo POWER_STATE_FILE=$(cat /tmp/hu.szabi.launcher.power-state 2>/dev/null || true)
+            luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"hu.szabi.launcher\"}" 2>/dev/null || true
+            luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"hu.szabi.launcher.quick\"}" 2>/dev/null || true
+            luna-send -n 1 -f -w 2000 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"hu.szabi.launcher.overlay\"}" 2>/dev/null || true
+            luna-send -n 1 -f -w 2000 luna://com.webos.service.webappmanager/listRunningApps "{\"includeSysApps\":false}" 2>/dev/null || true
+            for base in /media/developer/apps/usr/palm/applications /var/lib/webosbrew/applications /usr/palm/applications; do
+              d="$base/hu.szabi.launcher"
+              if [ -d "$d" ]; then
+                echo LAUNCHER_DIR=$d
+                for name in app.js launcher-ui.js launcher.css index.html appinfo.json; do
+                  [ -f "$d/$name" ] && sha256sum "$d/$name"
+                done
+              fi
+            done
+          '
+          echo TV_READONLY_STATUS_END
           echo QUICK_WAKE_LOG_ROTATED_BEGIN
           "${SSH[@]}" "tail -n 240 /tmp/hu.szabi.launcher-wake.log.1 2>/dev/null || true"
           echo QUICK_WAKE_LOG_ROTATED_END
