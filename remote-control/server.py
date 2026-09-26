@@ -170,6 +170,7 @@ REMOTE_BUTTON_BY_CODE = {int(item["keyCode"]): item for item in REMOTE_BUTTONS}
 REMOTE_EDITABLE_CODES = {
     code for code, item in REMOTE_BUTTON_BY_CODE.items() if item["locked"] is False
 }
+REMOTE_LONG_BACK_CODE = 412
 REMOTE_REPLACE_CODES = set(REMOTE_BUTTON_BY_CODE) - {116}
 INPUT_HOOK_CONFIG = "/home/root/.config/lginputhook/keybinds.json"
 INPUT_HOOK_ORIGINAL = "/home/root/.config/lginputhook/keybinds.before-remotemapper.json"
@@ -1931,6 +1932,8 @@ QUICK_CLOSE_SUPPRESS=/tmp/hu.szabi.launcher.quick-close-suppress
 ALLOW=/tmp/hu.szabi.launcher.allow-home
 HOME_MODE="$DIR/home-mode"
 CONTROL_ORIGIN="$DIR/control-origin"
+FORCE_MODE=${LAUNCHER_HOME_FORCE_MODE:-}
+FORCE_SOURCE=${LAUNCHER_HOME_FORCE_SOURCE:-}
 
 mkdir -p "$DIR"
 exec 7>/tmp/hu.szabi.launcher-home-key.flock
@@ -1967,11 +1970,15 @@ close_quick() {
 launch_mode() {
   mode=$1
   source=$2
-  configured_mode=$(cat "$HOME_MODE" 2>/dev/null)
-  case "$configured_mode" in
-    full) mode=full;;
-    overlay) mode=overlay;;
-  esac
+  if [ -n "$FORCE_MODE" ]; then
+    case "$FORCE_MODE" in full|overlay) mode=$FORCE_MODE;; *) exit 2;; esac
+  else
+    configured_mode=$(cat "$HOME_MODE" 2>/dev/null)
+    case "$configured_mode" in
+      full) mode=full;;
+      overlay) mode=overlay;;
+    esac
+  fi
   if [ "$mode" = "overlay" ]; then
     app=$QUICK_APP
     host=quick
@@ -2015,6 +2022,13 @@ launch_mode() {
   done
   /usr/bin/luna-send-pub -t 1 -w 10000 -f luna://com.webos.applicationManager/launch "$payload" >/dev/null 2>&1
 }
+
+# A broker-level long Back explicitly requests the full launcher.  This path
+# bypasses the Home short/long split but reuses the same safe launch payload.
+if [ -n "$FORCE_MODE" ]; then
+  launch_mode "$FORCE_MODE" "${FORCE_SOURCE:-external-force}"
+  exit $?
+fi
 
 # Both press lengths have the same destination in full mode. Dispatch on the
 # key-down hook without waiting for release/long-press detection in the log.
@@ -3716,6 +3730,15 @@ done
             "",
         ))
 
+    @staticmethod
+    def _long_back_action_script() -> str:
+        return "\n".join((
+            "#!/bin/sh", "set -eu",
+            "export LAUNCHER_HOME_FORCE_MODE=full",
+            "export LAUNCHER_HOME_FORCE_SOURCE=back-long",
+            "exec " + shlex.quote(LAUNCHER_HOME_KEY), "",
+        ))
+
     @classmethod
     def _action_script(cls, binding: dict[str, Any], code: int | None = None) -> str | None:
         action = binding.get("action")
@@ -3764,7 +3787,11 @@ done
             "device=LGE M-RCU - Builtin [0]",
             "output=LGE M-RCU - Builtin [2]",
         ]
-        actions: dict[int, str] = {}
+        # Back remains locked in the editor, but its long press is a protected
+        # system binding: short Back passes through; only repeat events launch
+        # the full custom launcher.
+        actions: dict[int, str] = {REMOTE_LONG_BACK_CODE: self._long_back_action_script()}
+        lines.append(f"{REMOTE_LONG_BACK_CODE}=long-action")
         for raw_code, raw_binding in sorted(bindings.items(), key=lambda item: int(item[0]) if str(item[0]).isdigit() else 99999):
             if not str(raw_code).isdigit() or not isinstance(raw_binding, dict):
                 continue
