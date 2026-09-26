@@ -849,7 +849,7 @@
       job.failures += 1;
       statusNode.textContent = 'nincs előnézet';
       statusNode.classList.add('offline');
-      schedule(Math.min(18000, 2500 * job.failures));
+      schedule(DEFAULT_PREVIEW_INTERVAL_SECONDS * 1000);
     };
     schedule(delay);
   }
