@@ -9,11 +9,15 @@ import io
 import json
 import os
 import tarfile
+import struct
+import zlib
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
+_LAUNCHER_SPLASH_CACHE: bytes | None = None
+
 
 LAUNCHER_FILES = (
     "app.js",
@@ -172,6 +176,73 @@ def ar_member(name: str, data: bytes) -> bytes:
     return header + data + (b"\n" if len(data) % 2 else b"")
 
 
+def launcher_splash_png() -> bytes:
+    """Generate the full-HD cold-boot splash used before the HTML loader paints."""
+    global _LAUNCHER_SPLASH_CACHE
+    if _LAUNCHER_SPLASH_CACHE is not None:
+        return _LAUNCHER_SPLASH_CACHE
+
+    width, height = 1920, 1080
+    cx, cy = width / 2, height * 0.445
+    icon_size = 118
+    gap = 14
+    cell = (icon_size - gap) // 2
+    left = int(cx - icon_size / 2)
+    top = int(cy - icon_size / 2)
+
+    def inside_round_rect(x: int, y: int, rx: int, ry: int, size: int, radius: int) -> bool:
+        px, py = x - rx, y - ry
+        if px < 0 or py < 0 or px >= size or py >= size:
+            return False
+        if radius <= px < size - radius or radius <= py < size - radius:
+            return True
+        qx = radius - px if px < radius else px - (size - radius - 1)
+        qy = radius - py if py < radius else py - (size - radius - 1)
+        return qx * qx + qy * qy <= radius * radius
+
+    rows: list[bytes] = []
+    for y in range(height):
+        row = bytearray((0,))
+        dy = (y - height * 0.43) / (height * 0.55)
+        for x in range(width):
+            dx = (x - width / 2) / (width * 0.38)
+            distance = (dx * dx + dy * dy) ** 0.5
+            glow = max(0.0, 1.0 - distance)
+            r = int(1 + 16 * glow)
+            g = int(2 + 38 * glow)
+            b = int(4 + 58 * glow)
+
+            local_x = x - left
+            local_y = y - top
+            for col in range(2):
+                for line in range(2):
+                    rx = col * (cell + gap)
+                    ry = line * (cell + gap)
+                    if inside_round_rect(local_x, local_y, rx, ry, cell, 10):
+                        # Slightly different phase/temperature per tile keeps the
+                        # static native splash visually close to the animated loader.
+                        mix = (col + line * 2) / 3
+                        r = int(166 - 48 * mix)
+                        g = int(239 - 48 * mix)
+                        b = 255
+            row.extend((r, g, b))
+        rows.append(bytes(row))
+
+    raw = b"".join(rows)
+    def chunk(name: bytes, payload: bytes) -> bytes:
+        body = name + payload
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
+    _LAUNCHER_SPLASH_CACHE = png
+    return png
+
+
 def host_config(host: str, app_id: str) -> bytes:
     if host not in {"full", "quick", "full-overlay"}:
         raise ValueError(f"unsupported launcher host: {host}")
@@ -208,6 +279,9 @@ def build(slug: str, config: dict[str, object]) -> tuple[Path, str]:
             # One shared script load avoids four serialized local-file loads on webOS.
             files[filename] = b";\n".join((source / name).read_bytes() for name in
                 ("launcher-cache.js", "launcher-quick-core.js", "launcher-popup-lifecycle.js", "launcher-ui.js", "app.js"))
+            continue
+        if filename == "splash-black.png" and source_slug == "launcher":
+            files[filename] = launcher_splash_png()
             continue
         path = appinfo_path if filename == "appinfo.json" else source / filename
         if not path.is_file():
