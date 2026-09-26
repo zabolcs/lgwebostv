@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const source = fs.readFileSync(path.join(__dirname, '../apps/launcher/launcher-ui.js'), 'utf8');
+const launcherCss = fs.readFileSync(path.join(__dirname, '../apps/launcher/launcher.css'), 'utf8');
 function extract(name, next) { return source.slice(source.indexOf('    function ' + name + '('), source.indexOf('    function ' + next + '(')); }
 const rows = [{}, {}, {}];
 let candidate;
@@ -28,4 +29,6 @@ assert.strictEqual(context.belongsAtPageTop(candidate, rows[2]), false);
 assert.ok(/function directPresetMjpeg\(preset\)/.test(source), 'focused camera preview must have a direct MJPEG helper');
 assert.ok(/button\.addEventListener\('focus'[\s\S]*?}, 1000\);/.test(source), 'camera MJPEG promotion must wait one second of stable focus');
 assert.ok(/button\.addEventListener\('blur'[\s\S]*?image\.src = cacheBust\(source\)/.test(source), 'camera MJPEG must stop and restore snapshot on blur');
+assert.ok(/\.launcher-boot-cover\[hidden\]\{display:none!important\}/.test(launcherCss), 'hidden loading cover must never remain visually displayed');
+assert.ok(/\.launcher-loading-active \.launcher-boot-mark i\{animation:launcher-boot-pulse[^}]*!important\}/.test(launcherCss), 'loading animation must stay active even when launcher motion is disabled');
 console.log('launcher startup focus tests: PASS');
