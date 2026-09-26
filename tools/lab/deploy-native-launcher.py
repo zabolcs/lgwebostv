@@ -141,18 +141,23 @@ try:
             "set -eu; "
             "systemctl restart lgtv-control.service; "
             "systemctl is-active lgtv-control.service; "
-            "curl -fsS http://127.0.0.1:8765/api/health"))
+            "python3 -c " + shlex.quote(
+                "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=5).read().decode())"
+            )))
         print(state, flush=True)
 
     if "static/index.html" in selected:
-        pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
-            "curl -fsS http://127.0.0.1:8765/ | grep -q 'dashboard-control.js'"))
+        pve(conn, "pct exec "+CTID+" -- python3 -c "+shlex.quote(
+            "import urllib.request; data=urllib.request.urlopen('http://127.0.0.1:8765/', timeout=5).read().decode(); "
+            "assert 'dashboard-control.js' in data"))
         print("SERVED_INDEX_OK", flush=True)
 
     if "static/dashboard-control.js" in selected:
         expected = hashlib.sha256((SOURCE/"static/dashboard-control.js").read_bytes()).hexdigest()
-        served = pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
-            "curl -fsS http://127.0.0.1:8765/assets/dashboard-control.js | sha256sum | awk '{print $1}'"))
+        served = pve(conn, "pct exec "+CTID+" -- python3 -c "+shlex.quote(
+            "import hashlib,urllib.request; "
+            "data=urllib.request.urlopen('http://127.0.0.1:8765/assets/dashboard-control.js', timeout=5).read(); "
+            "print(hashlib.sha256(data).hexdigest())"))
         if served.strip() != expected:
             raise RuntimeError(f"Served dashboard hash mismatch: {served.strip()} != {expected}")
         print("SERVED_DASHBOARD_OK "+served.strip(), flush=True)
