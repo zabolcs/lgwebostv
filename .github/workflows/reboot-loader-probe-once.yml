@@ -1,0 +1,34 @@
+name: Reboot loader probe once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/reboot-loader-probe-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Reboot and watch loader
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/lab/watch-launcher-loader-after-reboot.mjs >/tmp/launcher-loader-probe.log 2>&1 &
+          WATCH_PID=$!
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"; kill "$WATCH_PID" 2>/dev/null || true' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
+          ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240 "sync; reboot" || true
+          wait "$WATCH_PID"
+          cat /tmp/launcher-loader-probe.log
