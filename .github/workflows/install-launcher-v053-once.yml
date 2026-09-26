@@ -1,0 +1,91 @@
+name: Install launcher v0.5.3 once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/install-launcher-v053-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n tools/generated-tv-scripts/guard.sh
+          node tests/launcher-home-lifecycle.test.js
+          node tests/launcher-input-lifecycle.test.js
+          node tests/launcher-popup-park-race.test.js
+          python3 tests/test_launcher_packaging.py
+          rm -rf build
+          python3 scripts/build-all.py
+          test -f build/hu.szabi.launcher_0.3.13_all.ipk
+          test -f build/hu.szabi.launcher.quick_0.3.13_all.ipk
+          test -f build/hu.szabi.launcher.overlay_0.3.13_all.ipk
+
+      - name: Install without changing TV power or input
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          SCP=(scp -q -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts")
+
+          FG_BEFORE="$("${SSH[@]}" "luna-send -t 1 -f -w 1200 luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>&1" || true)"
+          echo "FOREGROUND_BEFORE=$FG_BEFORE"
+          if echo "$FG_BEFORE" | grep -Eq '"appId"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher([.]quick|[.]overlay)?"'; then
+            echo "Refusing live install while a launcher surface is foreground." >&2
+            exit 20
+          fi
+
+          STAGE="$("${SSH[@]}" "mktemp -d /tmp/launcher-v053.XXXXXX")"
+          BACKUP="$("${SSH[@]}" "mktemp -d /var/lib/webosbrew/launcher-v053-backup.XXXXXX")"
+          echo "ROLLBACK=$BACKUP"
+          "${SSH[@]}" "tar -czf '$BACKUP/apps.tgz' -C /media/developer/apps/usr/palm/applications hu.szabi.launcher hu.szabi.launcher.quick hu.szabi.launcher.overlay && cp -p /var/lib/webosbrew/launcher-home/guard.sh '$BACKUP/guard.sh'"
+
+          "${SCP[@]}" scripts/install-local-on-tv.sh "$STAGE/install.sh"
+          "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$STAGE/guard.sh"
+          for pkg in             build/hu.szabi.launcher_0.3.13_all.ipk             build/hu.szabi.launcher.quick_0.3.13_all.ipk             build/hu.szabi.launcher.overlay_0.3.13_all.ipk; do
+            "${SCP[@]}" "$pkg" "$STAGE/$(basename "$pkg")"
+          done
+
+          for pkg in             hu.szabi.launcher_0.3.13_all.ipk             hu.szabi.launcher.quick_0.3.13_all.ipk             hu.szabi.launcher.overlay_0.3.13_all.ipk; do
+            sha="$(sha256sum "build/$pkg" | awk '{print $1}')"
+            "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/$pkg' '$sha'"
+          done
+
+          "${SSH[@]}" "grep -q 'beginResumeLoading' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
+          "${SSH[@]}" "grep -q 'Long Back generates repeat events' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
+          "${SSH[@]}" "grep -q 'guard v0.5.3 started' '$STAGE/guard.sh'"
+
+          # Switch only the background guard. The handoff marker prevents the
+          # current Active session from being treated as a fresh wake.
+          "${SSH[@]}" "touch /tmp/hu.szabi.launcher.install-handoff && install -o root -g root -m 755 '$STAGE/guard.sh' /var/lib/webosbrew/launcher-home/guard.sh"
+          OLD_PID="$("${SSH[@]}" "cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true")"
+          case "$OLD_PID" in ''|*[!0-9]*) ;; *) "${SSH[@]}" "kill -TERM '$OLD_PID' 2>/dev/null || true";; esac
+          "${SSH[@]}" "i=0; while [ -e /tmp/hu.szabi.launcher-home.pid ] && [ $i -lt 40 ]; do /bin/usleep 100000; i=$((i+1)); done; nohup /var/lib/webosbrew/launcher-home/guard.sh </dev/null >>/tmp/hu.szabi.launcher-home.log 2>&1 &"
+          "${SSH[@]}" "i=0; while [ $i -lt 40 ]; do grep -q 'guard v0.5.3 started' /tmp/hu.szabi.launcher-wake.log 2>/dev/null && ! test -e /tmp/hu.szabi.launcher.install-handoff && exit 0; /bin/usleep 100000; i=$((i+1)); done; exit 1"
+
+          FG_AFTER="$("${SSH[@]}" "luna-send -t 1 -f -w 1200 luna://com.webos.applicationManager/getForegroundAppInfo '{}' 2>&1" || true)"
+          echo "FOREGROUND_AFTER=$FG_AFTER"
+          if echo "$FG_AFTER" | grep -Eq '"appId"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher([.]quick|[.]overlay)?"'; then
+            echo "Unexpected launcher foreground after install." >&2
+            exit 21
+          fi
+
+          "${SSH[@]}" "echo GUARD_SHA=$(sha256sum /var/lib/webosbrew/launcher-home/guard.sh | cut -d' ' -f1); echo GUARD_PID=$(cat /tmp/hu.szabi.launcher-home.pid); tail -n 12 /tmp/hu.szabi.launcher-wake.log"
+          echo "INSTALL_V053=PASS"
