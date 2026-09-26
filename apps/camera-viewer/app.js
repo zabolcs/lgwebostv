@@ -760,19 +760,22 @@
     if (!job) return;
     if (job.focusTimer) root.clearTimeout(job.focusTimer);
     job.focusTimer = null;
-    if (job.liveImage) {
-      job.liveImage.onload = null;
-      job.liveImage.onerror = null;
-      job.liveImage.removeAttribute('src');
-      if (job.liveImage.parentNode) job.liveImage.parentNode.removeChild(job.liveImage);
-      job.liveImage = null;
-    }
-    if (job.liveBadge) {
-      if (job.liveBadge.parentNode) job.liveBadge.parentNode.removeChild(job.liveBadge);
-      job.liveBadge = null;
-    }
+    var liveImage = job.liveImage;
+    var liveBadge = job.liveBadge;
+    job.liveImage = null;
+    job.liveBadge = null;
     if (job.tile) job.tile.classList.remove('is-live');
     if (state.activeGridLiveJob === job) state.activeGridLiveJob = null;
+    if (liveBadge && liveBadge.parentNode) liveBadge.parentNode.removeChild(liveBadge);
+    if (liveImage) {
+      liveImage.style.display = 'none';
+      root.setTimeout(function () {
+        liveImage.onload = null;
+        liveImage.onerror = null;
+        liveImage.removeAttribute('src');
+        if (liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
+      }, 0);
+    }
   }
 
   function stopGridJobs() {
@@ -810,7 +813,7 @@
     }
     function refresh() {
       if (job.stopped || state.suspended || state.view !== 'grid') return;
-      if (state.activeGridLiveJob === job) {
+      if (state.activeGridLiveJob) {
         schedule(DEFAULT_PREVIEW_INTERVAL_SECONDS * 1000);
         return;
       }
@@ -823,6 +826,8 @@
       if (state.activeGridLiveJob && state.activeGridLiveJob !== job) clearGridLivePreview(state.activeGridLiveJob);
       clearGridLivePreview(job);
       state.activeGridLiveJob = job;
+      statusNode.textContent = '';
+      statusNode.classList.remove('offline');
       var liveImage = root.document.createElement('img');
       var liveBadge = root.document.createElement('span');
       liveImage.alt = '';
@@ -951,7 +956,7 @@
         cell.appendChild(tile);
         cell.appendChild(featureButton);
         ui.cameraGrid.appendChild(cell);
-        startGridSnapshot(image, profile, index * 280, status, tile);
+        startGridSnapshot(image, profile, index * 650, status, tile);
       }(layout.items[i], i));
     }
     startScreenGuard();
