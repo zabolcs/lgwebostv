@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# retry: proven timed Luna query mode
+# retry: prove HDMI-to-full foreground transition
 
 jobs:
   probe:
