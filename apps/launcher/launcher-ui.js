@@ -990,11 +990,14 @@
               previewFocusTimer = global.setTimeout(function () {
                 previewFocusTimer = null;
                 if (document.activeElement !== button || document.hidden || parked) return;
-                if (activeLivePreview && activeLivePreview.image !== image) {
-                  activeLivePreview.image.src = cacheBust(activeLivePreview.snapshotUrl);
-                }
-                activeLivePreview = { image: image, snapshotUrl: source };
-                image.src = liveMjpegUrl;
+                stopActiveLivePreview();
+                var liveImage = document.createElement('img');
+                liveImage.alt = '';
+                liveImage.className = 'launcher-camera-live';
+                liveImage.setAttribute('data-live-mjpeg', liveMjpegUrl);
+                media.appendChild(liveImage);
+                activeLivePreview = { button: button, image: liveImage };
+                liveImage.src = liveMjpegUrl;
               }, 1000);
             });
             button.addEventListener('blur', function () {
