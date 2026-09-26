@@ -30,5 +30,5 @@ assert.ok(/function directPresetMjpeg\(preset\)/.test(source), 'focused camera p
 assert.ok(/button\.addEventListener\('focus'[\s\S]*?}, 1000\);/.test(source), 'camera MJPEG promotion must wait one second of stable focus');
 assert.ok(/button\.addEventListener\('blur'[\s\S]*?image\.src = cacheBust\(source\)/.test(source), 'camera MJPEG must stop and restore snapshot on blur');
 assert.ok(/\.launcher-boot-cover\[hidden\]\{display:none!important\}/.test(launcherCss), 'hidden loading cover must never remain visually displayed');
-assert.ok(/\.launcher-loading-active \.launcher-boot-mark i\{animation:launcher-boot-pulse[^}]*!important\}/.test(launcherCss), 'loading animation must stay active even when launcher motion is disabled');
+assert.ok(/\.launcher-motion-disabled \.launcher-boot-cover:not\(\[hidden\]\) \.launcher-boot-mark i\{animation:launcher-boot-pulse[^}]*!important\}/.test(launcherCss), 'visible loading cover must stay animated even when launcher motion is disabled');
 console.log('launcher startup focus tests: PASS');
