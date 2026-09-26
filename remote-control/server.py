@@ -4349,7 +4349,11 @@ class ControlHandler(BaseHTTPRequestHandler):
                 self.json_response(HTTPStatus.FORBIDDEN, {"ok": False, "error": "Ez a hálózati cím nem olvashat launcher-állapotot."})
                 return
             try:
-                self.json_response(HTTPStatus.OK, {"ok": True, "homeGuard": self.server.launcher_home.status()})  # type: ignore[attr-defined]
+                self.json_response(HTTPStatus.OK, {
+                    "ok": True,
+                    "homeGuard": self.server.launcher_home.status(),  # type: ignore[attr-defined]
+                    "launcherRunning": self.server.launcher_home.launcher_running("full"),  # type: ignore[attr-defined]
+                })
             except (RuntimeError, subprocess.TimeoutExpired) as error:
                 self.json_response(HTTPStatus.BAD_GATEWAY, {"ok": False, "error": str(error)})
             return
