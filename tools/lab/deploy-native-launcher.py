@@ -42,6 +42,21 @@ def pve(conn, command, timeout=60):
         )
     return out.decode().strip()
 
+# Relocate the legacy Windows credential source to the private NAS checkpoint.
+if hasattr(remote, "OLD") and not Path(remote.OLD).is_file():
+    candidates = []
+    preferred = Path("/media/lgtv/checkpoint-20260925-20260925-092443")
+    if preferred.exists():
+        candidates.extend(preferred.rglob("CHECKPOINT-LGTV-2026-08-31.md"))
+    if not candidates:
+        root = Path("/media/lgtv")
+        if root.exists():
+            candidates.extend(root.rglob("CHECKPOINT-LGTV-2026-08-31.md"))
+    if not candidates:
+        raise SystemExit("Private credential checkpoint CHECKPOINT-LGTV-2026-08-31.md not found")
+    remote.OLD = candidates[0]
+    print(f"Using private credential checkpoint: {remote.OLD}", flush=True)
+
 conn = remote.connect()
 try:
     stage = pve(conn, "mktemp -d /tmp/lgtv-native-deploy.XXXXXX")
