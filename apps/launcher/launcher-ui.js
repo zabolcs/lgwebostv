@@ -147,6 +147,7 @@
     var backPressed = false;
     var backHeld = false;
     var resumeLoadingGeneration = 0;
+    var resumeLoadingFailsafeTimer = null;
     var editingTileId = '';
     var editMode = null;
     var appPickerActive = false;
@@ -171,7 +172,7 @@
     var cachedBootPrefs = {};
     try { cachedBootPrefs = JSON.parse(global.localStorage.getItem(BOOT_PREFS_KEY) || '{}') || {}; } catch (ignore) {}
     var bootOverlayEnabled = cachedBootPrefs.enabled !== false;
-    var bootMaxMs = Math.max(1000, Math.min(10000, Number(cachedBootPrefs.maxSeconds || 2) * 1000));
+    var bootMaxMs = Math.max(1000, Math.min(5000, Number(cachedBootPrefs.maxSeconds || 2) * 1000));
     var bootActive = mode === 'tv' && viewMode === 'full' && bootOverlayEnabled;
     var bootPending = 0;
     var bootRenderReady = false;
@@ -215,6 +216,22 @@
         document.body.classList.remove('launcher-loading-active');
       }
     }
+
+    function forceHideLoadingCover() {
+      if (resumeLoadingFailsafeTimer) {
+        global.clearTimeout(resumeLoadingFailsafeTimer);
+        resumeLoadingFailsafeTimer = null;
+      }
+      resumeLoadingGeneration += 1;
+      setBootCoverState(false, false);
+      var cover = document.getElementById('launcher-boot');
+      if (cover) {
+        cover.classList.remove('resume-loading', 'ready');
+        cover.hidden = true;
+        cover.setAttribute('aria-hidden', 'true');
+      }
+      document.body.classList.remove('launcher-loading-active');
+    }
     function finishResumeLoading(generation, minimumMs, startedAt) {
       function finishFrame() {
         if (generation !== resumeLoadingGeneration) return;
@@ -243,6 +260,11 @@
       var generation = ++resumeLoadingGeneration;
       var startedAt = Date.now();
       setBootCoverState(true, true);
+      if (resumeLoadingFailsafeTimer) global.clearTimeout(resumeLoadingFailsafeTimer);
+      resumeLoadingFailsafeTimer = global.setTimeout(function () {
+        if (generation !== resumeLoadingGeneration) return;
+        forceHideLoadingCover();
+      }, 5000);
       // A stalled renderer naturally delays this callback. That makes the
       // cover remain visible for the period in which input would not respond.
       global.setTimeout(function () {
@@ -251,8 +273,7 @@
       }, 0);
     }
     function cancelResumeLoading() {
-      resumeLoadingGeneration += 1;
-      setBootCoverState(false, false);
+      forceHideLoadingCover();
     }
 
     function bootTrack(image) {
