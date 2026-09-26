@@ -181,3 +181,5 @@ body.launcher-quick-closing .launcher-quick-shell{animation:launcher-quick-exit 
 #launcher-settings button:disabled{opacity:.4}
 #launcher-settings .launcher-settings-help{position:absolute;left:7px;right:0;bottom:0;margin:0;padding-top:10px;border-top:1px solid #365066;color:#b7d0df;font-size:18px}
 @media(max-height:800px){#launcher-settings .launcher-settings-modal{padding:18px 28px 16px;font-size:21px}#launcher-settings .launcher-modal-head{margin-bottom:10px;padding-bottom:10px}#launcher-settings h2{font-size:29px}#launcher-settings .launcher-close{width:48px;height:48px}#launcher-settings .launcher-settings-nav{flex-basis:230px}#launcher-settings .launcher-settings-nav button{min-height:57px;padding:10px 12px;margin-bottom:8px}#launcher-settings .launcher-setting-toggle{min-height:69px;padding:10px 12px}#launcher-settings .launcher-setting-choice{font-size:19px}#launcher-settings .launcher-settings-help{font-size:16px}}
+
+.launcher-camera-live{position:absolute!important;z-index:3!important;top:0!important;right:0!important;bottom:0!important;left:0!important;width:100%!important;height:100%!important;object-fit:cover!important;filter:none!important}
