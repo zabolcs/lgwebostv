@@ -13,6 +13,8 @@ QUICK_CLOSE_SUPPRESS=/tmp/hu.szabi.launcher.quick-close-suppress
 ALLOW=/tmp/hu.szabi.launcher.allow-home
 HOME_MODE="$DIR/home-mode"
 CONTROL_ORIGIN="$DIR/control-origin"
+FORCE_MODE=${LAUNCHER_HOME_FORCE_MODE:-}
+FORCE_SOURCE=${LAUNCHER_HOME_FORCE_SOURCE:-}
 
 mkdir -p "$DIR"
 exec 7>/tmp/hu.szabi.launcher-home-key.flock
@@ -48,11 +50,15 @@ close_quick() {
 launch_mode() {
   mode=$1
   source=$2
-  configured_mode=$(cat "$HOME_MODE" 2>/dev/null)
-  case "$configured_mode" in
-    full) mode=full;;
-    overlay) mode=overlay;;
-  esac
+  if [ -n "$FORCE_MODE" ]; then
+    case "$FORCE_MODE" in full|overlay) mode=$FORCE_MODE;; *) exit 2;; esac
+  else
+    configured_mode=$(cat "$HOME_MODE" 2>/dev/null)
+    case "$configured_mode" in
+      full) mode=full;;
+      overlay) mode=overlay;;
+    esac
+  fi
   if [ "$mode" = "overlay" ]; then
     app=$QUICK_APP
     host=quick
@@ -95,6 +101,13 @@ launch_mode() {
   done
   /usr/bin/luna-send-pub -t 1 -w 10000 -f luna://com.webos.applicationManager/launch "$payload" >/dev/null 2>&1
 }
+
+# A broker-level long Back explicitly requests the full launcher.  This path
+# bypasses the Home short/long split but reuses the same safe launch payload.
+if [ -n "$FORCE_MODE" ]; then
+  launch_mode "$FORCE_MODE" "${FORCE_SOURCE:-external-force}"
+  exit $?
+fi
 
 # Both press lengths have the same destination in full mode. Dispatch on the
 # key-down hook without waiting for release/long-press detection in the log.
