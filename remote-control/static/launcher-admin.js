@@ -266,37 +266,17 @@
   }
   function createPage() {
     document.body.classList.add('launcher-admin-enabled');
-    var tab = document.querySelector('.tab[data-page="launcher"]'); if (!tab) { tab = document.createElement('button'); tab.className = 'tab'; tab.type = 'button'; tab.setAttribute('data-page', 'launcher'); tab.textContent = 'Launcher'; document.querySelector('.tabs').appendChild(tab); }
+    var tab = document.querySelector('.tab[data-page="launcher"]');
+    if (!tab) {
+      tab = document.createElement('button'); tab.className = 'tab'; tab.type = 'button';
+      tab.setAttribute('data-page', 'launcher'); tab.textContent = 'Launcher';
+      document.querySelector('.tabs').appendChild(tab);
+    }
+    tab.textContent = 'Launcher beállítások';
     tab.addEventListener('click', function () { showPage('launcher'); });
     var page = document.createElement('section'); page.id = 'page-launcher'; page.className = 'page'; page.hidden = true;
-    page.innerHTML = '<section class="launcher-admin-panel launcher-screen-toolbar"><div class="launcher-screen-heading"><h2>Launcher előnézet és TV</h2><p class="launcher-admin-small">Az élő kép ugyanitt váltja fel a szimulációt, és csak bekapcsolt állapotban frissül.</p></div><div class="launcher-screen-actions"><label class="launcher-view-switch"><span>Szimuláció</span><input id="launcher-live-enabled" type="checkbox" role="switch" aria-label="Élő TV-kép bekapcsolása"><i aria-hidden="true"></i><span>Élő TV</span></label><button id="launcher-remote-button" class="secondary" type="button" aria-haspopup="dialog" aria-expanded="false">⌁ Távirányító</button><button id="launcher-tv-screen-button" class="secondary" type="button">Egyszeri nagy kép</button></div></section><div class="launcher-preview-stage"><section id="launcher-preview" class="launcher-preview-surface"></section><figure id="launcher-live-stage" class="launcher-live-stage" hidden><div class="launcher-live-placeholder" aria-hidden="true"><b>TV</b><span>Az élő képre várunk…</span></div><img id="launcher-live-image" class="launcher-live-image" alt="A TV élő képe" hidden><figcaption id="launcher-live-status">Élő nézet kikapcsolva</figcaption></figure></div><section id="launcher-editor" class="launcher-admin"></section><div id="launcher-remote-overlay" class="launcher-overlay launcher-remote-overlay" hidden><section class="launcher-modal launcher-remote-modal" role="dialog" aria-modal="true" aria-labelledby="launcher-remote-title"><header class="launcher-modal-head"><div><h2 id="launcher-remote-title">TV távirányító</h2><p class="launcher-admin-small">A gomb csak kattintásra küld parancsot a TV-nek.</p></div><button id="launcher-remote-close" class="launcher-close" type="button" aria-label="Távirányító bezárása">×</button></header><div class="launcher-remote-device"><div class="launcher-remote-brand"><span>LG TV</span><small>Hálózati távirányító</small></div><div class="launcher-remote-utility"><button type="button" data-tv-key="home"><b>⌂</b><span>Home</span></button><button type="button" data-tv-key="back"><b>↶</b><span>Vissza</span></button></div><div class="launcher-remote-navigation" aria-label="Navigáció"><button type="button" data-tv-key="up" class="launcher-remote-up" aria-label="Fel">▲</button><button type="button" data-tv-key="left" class="launcher-remote-left" aria-label="Balra">◀</button><button type="button" data-tv-key="ok" class="launcher-remote-ok">OK</button><button type="button" data-tv-key="right" class="launcher-remote-right" aria-label="Jobbra">▶</button><button type="button" data-tv-key="down" class="launcher-remote-down" aria-label="Le">▼</button></div><div class="launcher-remote-media"><button type="button" data-tv-key="playPause"><b>▶Ⅱ</b><span>Lejátszás</span></button><button type="button" data-tv-key="stop"><b>■</b><span>Stop</span></button></div></div><p id="launcher-remote-status" class="launcher-remote-status" role="status" aria-live="polite">A távirányító használatra kész.</p></section></div><div id="launcher-tv-screen-overlay" class="launcher-overlay" hidden><section class="launcher-modal"><header class="launcher-modal-head"><h2>TV aktuális képe</h2><button id="launcher-tv-screen-close" class="launcher-close" type="button">×</button></header><p id="launcher-tv-screen-status" class="launcher-admin-small">Képkocka lekérése…</p><img id="launcher-tv-screen-image" class="launcher-tv-screen-image" alt="A TV aktuális képernyőképe"><div class="launcher-admin-actions"><button id="launcher-tv-screen-refresh" type="button">Kép frissítése</button></div></section></div>';
+    page.innerHTML = '<div class="page-head"><div class="overview-kicker">Launcher</div><h2>Launcher beállítások</h2><p>A kezdőképernyő elemei, megjelenése és működése. A képi előnézet az Áttekintés oldalon érhető el.</p></div><section id="launcher-preview" hidden></section><section id="launcher-editor" class="launcher-admin"></section>';
     document.querySelector('main').appendChild(page);
-    window.addEventListener('resize', function () { if (previewResizeTimer) window.clearTimeout(previewResizeTimer); previewResizeTimer = window.setTimeout(fitPreviewForViewport, 80); });
-    function loadScreen() { var image = el('launcher-tv-screen-image'); el('launcher-tv-screen-status').textContent = 'Képkocka lekérése…'; image.hidden = true; image.onload = function () { image.hidden = false; el('launcher-tv-screen-status').textContent = 'Egyszeri 1920 × 1080 képkocka · ' + new Date().toLocaleTimeString('hu-HU'); }; image.onerror = function () { el('launcher-tv-screen-status').textContent = 'A TV-kép most nem kérhető le.'; }; image.src = '/api/tv-screen?_=' + Date.now(); }
-    el('launcher-tv-screen-button').addEventListener('click', function () { el('launcher-tv-screen-overlay').hidden = false; loadScreen(); });
-    el('launcher-tv-screen-close').addEventListener('click', function () { el('launcher-tv-screen-overlay').hidden = true; });
-    el('launcher-tv-screen-refresh').addEventListener('click', loadScreen);
-    function closeRemote() { el('launcher-remote-overlay').hidden = true; el('launcher-remote-button').setAttribute('aria-expanded', 'false'); el('launcher-remote-button').focus(); }
-    el('launcher-remote-button').addEventListener('click', function () { el('launcher-remote-overlay').hidden = false; this.setAttribute('aria-expanded', 'true'); el('launcher-remote-close').focus(); });
-    el('launcher-remote-close').addEventListener('click', closeRemote);
-    el('launcher-remote-overlay').addEventListener('click', function (event) { if (event.target === this) closeRemote(); });
-    document.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !el('launcher-remote-overlay').hidden) closeRemote(); });
-    var liveTimer = null; var livePending = false;
-    function scheduleLive(delay) { if (liveTimer) window.clearTimeout(liveTimer); if (el('launcher-live-enabled').checked) liveTimer = window.setTimeout(loadLive, delay); }
-    function loadLive() {
-      if (!el('launcher-live-enabled').checked || livePending) return;
-      livePending = true; var image = el('launcher-live-image');
-      image.onload = function () { livePending = false; image.hidden = false; el('launcher-live-status').textContent = 'Élő TV-kép · ' + new Date().toLocaleTimeString('hu-HU'); scheduleLive(1500); };
-      image.onerror = function () { livePending = false; image.hidden = true; el('launcher-live-status').textContent = 'A VNC-kép most nem érhető el, újrapróbáljuk…'; scheduleLive(3500); };
-      image.src = '/api/tv-screen?_=' + Date.now();
-    }
-    el('launcher-live-enabled').addEventListener('change', function () { var enabled = this.checked; el('launcher-preview').hidden = enabled; el('launcher-live-stage').hidden = !enabled; if (enabled) { el('launcher-live-status').textContent = 'Élő képkocka lekérése…'; loadLive(); } else { if (liveTimer) window.clearTimeout(liveTimer); liveTimer = null; livePending = false; el('launcher-live-image').hidden = true; el('launcher-live-status').textContent = 'Élő nézet kikapcsolva'; } });
-    Array.prototype.forEach.call(page.querySelectorAll('[data-tv-key]'), function (button) {
-      button.addEventListener('click', function () {
-        var key = button.getAttribute('data-tv-key'); el('launcher-remote-status').textContent = 'Küldés: ' + key + '…';
-        fetch('/api/tv-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key }) }).then(function (response) { return response.json().then(function (body) { if (!response.ok || !body.ok) throw new Error(body.error || 'A TV nem válaszolt.'); }); }).then(function () { el('launcher-remote-status').textContent = 'Elküldve: ' + key; if (el('launcher-live-enabled').checked) scheduleLive(250); }, function (error) { el('launcher-remote-status').textContent = error.message; });
-      });
-    });
     window.LauncherUI.init(el('launcher-preview'), { mode: 'admin', apiBase: '', onReady: ready });
   }
   createPage();
