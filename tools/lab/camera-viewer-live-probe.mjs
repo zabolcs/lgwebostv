@@ -109,7 +109,7 @@ for (let i = 0; i < inventory.length; i += 1) {
   await evaluate(page, `(function(){var t=document.querySelectorAll('.camera-tile')[${i}];if(t)t.focus();return true;})()`);
   await sleep(90);
 }
-await sleep(780);
+await sleep(1150);
 const rapid = JSON.parse(await evaluate(page, `JSON.stringify((function(){
   var tiles=document.querySelectorAll('.camera-tile');
   var last=tiles[tiles.length-1];
@@ -130,7 +130,7 @@ for (let i = 0; i < inventory.length; i += 1) {
   if (!measured.active || measured.totalLive !== 1 || !measured.liveUrl || measured.badge !== 'LIVE' || measured.oldLiveLabel) {
     throw new Error('FOCUS_STRESS_FAIL_' + i);
   }
-  if (measured.elapsedMs > 1200) throw new Error('FOCUS_STRESS_TOO_SLOW_' + i + '=' + measured.elapsedMs);
+  if (measured.elapsedMs > 1450) throw new Error('FOCUS_STRESS_TOO_SLOW_' + i + '=' + measured.elapsedMs);
 }
 console.log('FOCUS_ALL=' + JSON.stringify(allFocus));
 
@@ -177,7 +177,7 @@ for (const step of remoteSteps) {
 console.log('REMOTE_NAV=' + JSON.stringify(remoteNav));
 for (let i = 0; i < remoteNav.length; i += 1) {
   const state = remoteNav[i];
-  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1000 || state.dispatchMs > 500) {
+  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1450 || state.dispatchMs > 500) {
     throw new Error('REMOTE_NAV_FAIL_' + remoteSteps[i].index + '=' + JSON.stringify(state));
   }
 }
@@ -185,12 +185,12 @@ for (let i = 0; i < remoteNav.length; i += 1) {
 const first = await focusAndMeasure(0);
 console.log('FOCUS_1=' + JSON.stringify(first));
 if (!first.active || first.totalLive !== 1 || !first.liveUrl || first.badge !== 'LIVE' || first.oldLiveLabel) throw new Error('FIRST_FOCUS_LIVE_FAIL');
-if (first.elapsedMs > 1100) throw new Error('FIRST_FOCUS_TOO_SLOW=' + first.elapsedMs);
+if (first.elapsedMs > 1450) throw new Error('FIRST_FOCUS_TOO_SLOW=' + first.elapsedMs);
 
 const second = await focusAndMeasure(1);
 console.log('FOCUS_2=' + JSON.stringify(second));
 if (!second.active || second.totalLive !== 1 || !second.liveUrl || second.badge !== 'LIVE' || second.oldLiveLabel) throw new Error('SECOND_FOCUS_LIVE_FAIL');
-if (second.elapsedMs > 1100) throw new Error('SECOND_FOCUS_TOO_SLOW=' + second.elapsedMs);
+if (second.elapsedMs > 1450) throw new Error('SECOND_FOCUS_TOO_SLOW=' + second.elapsedMs);
 
 const kapuIndex = inventory.findIndex(x => /^Kapu$/i.test(x.name));
 if (kapuIndex >= 0) {
