@@ -5,6 +5,9 @@ on:
     branches: [develop]
     paths:
       - '.github/workflows/deploy-current-launcher-control.yml'
+      - 'remote-control/static/index.html'
+      - 'remote-control/static/launcher-admin.js'
+      - 'remote-control/static/connections-ui.js'
   workflow_dispatch:
 
 permissions:
@@ -62,4 +65,4 @@ jobs:
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
           test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
           echo "Using private transport helper."
-          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python tools/lab/deploy-native-launcher.py server.py
+          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python tools/lab/deploy-native-launcher.py static/index.html static/launcher-admin.js static/connections-ui.js
