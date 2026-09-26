@@ -43,6 +43,12 @@ jobs:
             fi
           done
           echo "No key-based direct SSH login; password secret path remains required."
+      - name: Locate legacy private helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          find /media/lgtv /home/actions/lgtv-import -type f -path '*/source/previous-work-20260905/remote.py' -print 2>/dev/null | head -n 5
+          find /media/lgtv /home/actions/lgtv-import -type f -name remote.py -print 2>/dev/null | head -n 30
       - name: Deploy NAS control UI
         shell: bash
         env:
