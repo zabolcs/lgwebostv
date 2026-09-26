@@ -1684,14 +1684,42 @@
       });
       if (editMode) global.setTimeout(positionEditToolbar, 0);
     }
+    function refreshLauncherState() {
+      toast('Launcher frissítése…');
+      var task;
+      try {
+        task = typeof options.onRefresh === 'function'
+          ? options.onRefresh()
+          : request('/api/launcher/state', 'GET');
+      } catch (error) {
+        toast(error.message || 'A launcher frissítése sikertelen.', true);
+        return;
+      }
+      Promise.resolve(task).then(function (result) {
+        if (result && result.config) {
+          data = { config: deepCopy(result.config), apps: deepCopy(result.apps || []), presets: deepCopy(result.presets || []) };
+          applyBootPreferences(data.config.settings);
+          shell(); render();
+          if (viewMode === 'full') renderClock();
+        }
+        toast('Launcher frissítve.');
+      }, function (error) {
+        toast(error.message || 'A launcher frissítése sikertelen.', true);
+      });
+    }
     function renderTopActions() {
       var host = root.querySelector('.launcher-top-actions'); if (!host) return; host.textContent = '';
       var last = data.config.lastUsed;
       if (last) {
         var resume = document.createElement('button'); resume.type = 'button'; resume.className = 'launcher-icon-action';
-        resume.innerHTML = '<img class="launcher-resume-icon" alt=""><span></span>'; resume.querySelector('img').src = iconData('resume'); text(resume.querySelector('span'), 'Folytatás: ' + last.label);
+        resume.innerHTML = '<span class="launcher-resume-glyph" aria-hidden="true">▶</span><span></span>';
+        text(resume.querySelector('span:last-child'), 'Folytatás: ' + last.label);
         resume.addEventListener('click', function () { launch(last); }); host.appendChild(resume);
       }
+      var refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'launcher-icon-action';
+      refresh.title = 'Launcher frissítése';
+      refresh.innerHTML = '<span class="launcher-refresh-glyph" aria-hidden="true">↻</span><span>Frissítés</span>';
+      refresh.addEventListener('click', refreshLauncherState); host.appendChild(refresh);
       var diagnostics = document.createElement('button'); diagnostics.type = 'button'; diagnostics.className = 'launcher-icon-action launcher-round'; diagnostics.title = 'TV diagnosztika'; diagnostics.textContent = 'ⓘ';
       diagnostics.addEventListener('click', showDiagnostics); host.appendChild(diagnostics);
     }
