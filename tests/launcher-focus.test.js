@@ -30,7 +30,7 @@ assert.ok(/function directPresetMjpeg\(preset\)/.test(source), 'focused camera p
 assert.ok(/var sources = \[\s*String\(preset && preset\.content/.test(source), 'camera preset content must win over profile-derived preview URL');
 assert.ok(/button\.addEventListener\('focus'[\s\S]*?}, 1000\);/.test(source), 'camera MJPEG promotion must wait one second of stable focus');
 assert.ok(/className = 'launcher-camera-live'/.test(source), 'focused camera MJPEG must use a separate live image layer');
-assert.ok(/className = 'launcher-camera-live-badge'/.test(source) && /liveBadge\.hidden = false/.test(source), 'camera LIVE badge must appear after the MJPEG stream starts');
+assert.ok(/className = 'launcher-camera-live-badge'/.test(source) && !/liveBadge\.hidden = true/.test(source), 'camera LIVE badge must appear as soon as live mode starts');
 assert.ok(/button\.addEventListener\('blur'[\s\S]*?stopActiveLivePreview\(\)/.test(source), 'camera MJPEG live layer must stop on blur');
 assert.ok(/\.launcher-camera-live\{[^}]*position:absolute!important[^}]*z-index:3!important/.test(launcherCss), 'camera MJPEG live layer must be above the cached snapshot');
 assert.ok(/\.launcher-camera-live-badge\{[^}]*right:8px[^}]*bottom:8px/.test(launcherCss), 'camera LIVE badge must sit at the bottom-right of the preview');
