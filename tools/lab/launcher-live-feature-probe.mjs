@@ -77,6 +77,35 @@ const inventory = await evaluate(page, `JSON.stringify(Array.prototype.map.call(
 }))`);
 console.log('CAMERA_INVENTORY=' + inventory);
 
+const inventoryRows = JSON.parse(inventory);
+const streamChecks = [];
+for (const camera of inventoryRows) {
+  const row = {targetId: camera.targetId, url: camera.mjpeg, ok: false, status: 0, contentType: '', firstBytes: 0, error: ''};
+  if (!camera.mjpeg) {
+    row.error = 'no-mjpeg-url';
+    streamChecks.push(row);
+    continue;
+  }
+  try {
+    const response = await fetch(camera.mjpeg, {signal: AbortSignal.timeout(6000)});
+    row.status = response.status;
+    row.contentType = response.headers.get('content-type') || '';
+    if (!response.ok || !response.body) throw new Error('HTTP ' + response.status);
+    const reader = response.body.getReader();
+    const read = await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('first-chunk-timeout')), 4500))
+    ]);
+    row.firstBytes = read && read.value ? read.value.byteLength : 0;
+    row.ok = row.firstBytes > 0 && /multipart\/x-mixed-replace|image\/jpeg/i.test(row.contentType);
+    try { await reader.cancel(); } catch {}
+  } catch (error) {
+    row.error = String(error && error.message || error);
+  }
+  streamChecks.push(row);
+}
+console.log('CAMERA_STREAM_CHECKS=' + JSON.stringify(streamChecks));
+
 const result = await evaluate(page, `
 (async function () {
   var sleep = function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
