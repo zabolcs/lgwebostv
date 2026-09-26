@@ -1,5 +1,5 @@
 #!/bin/sh
-# v0.5.1 guard: private-WAM cover + retained full launcher with v0.4.0 fallback.
+# v0.5.2 guard: private-WAM cover + compositor-safe delayed retained full launcher with v0.4.0 fallback.
 DIR=/var/lib/webosbrew/launcher-home
 ENABLED="$DIR/enabled"
 PIDFILE=/tmp/hu.szabi.launcher-home.pid
@@ -283,6 +283,10 @@ prepare_resume_wam_cover_worker() {
 }
 
 active_wam_full_worker() {
+  # Raw Active arrives slightly before Surface Manager is ready to present a
+  # retained card on this firmware.  Give the compositor a quarter second;
+  # this is still far earlier than the conservative v0.4.0 RPC chain.
+  /bin/usleep 250000
   [ -f "$QUICK_WAKE_ARMED" ] || { rm -f "$QUICK_WAM_FULL_ATTEMPT"; return 1; }
   [ -s "$QUICK_WAM_FULL_PAYLOAD" ] || { rm -f "$QUICK_WAM_FULL_ATTEMPT"; return 1; }
   [ ! -f "$HOME_ACTIVE" ] || { rm -f "$QUICK_WAM_FULL_ATTEMPT"; return 1; }
@@ -290,15 +294,15 @@ active_wam_full_worker() {
 
   payload=$(cat "$QUICK_WAM_FULL_PAYLOAD" 2>/dev/null)
   [ -n "$payload" ] || { rm -f "$QUICK_WAM_FULL_ATTEMPT"; return 1; }
-  diagnostic 'private WAM Active full dispatch'
+  diagnostic 'private WAM Active+250ms full dispatch'
   result=$(luna-send -n 1 -f -w 600 luna://com.webos.service.webappmanager/launchApp "$payload" 2>&1)
   if echo "$result" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
     touch "$QUICK_WAM_FULL_ACCEPTED"
-    diagnostic 'private WAM Active full accepted'
+    diagnostic 'private WAM Active+250ms full accepted'
     return 0
   fi
   rm -f "$QUICK_WAM_FULL_ATTEMPT"
-  diagnostic 'private WAM Active full failed; v0.4.0 fallback remains armed'
+  diagnostic 'private WAM Active+250ms full failed; v0.4.0 fallback remains armed'
   return 1
 }
 
@@ -775,7 +779,7 @@ rm -f "$ALLOW" "$POWER_STATE" "$POWER_EVENT" "$FOREGROUND_EVENT" "$BOOT_READY" "
 foreground_loop 9>&- &
 power_loop 9>&- &
 wake_gap_loop 9>&- &
-diagnostic 'guard v0.5.1 started'
+diagnostic 'guard v0.5.2 started'
 next_poll=0
 while [ -f "$ENABLED" ]; do
   run_pending_tick
