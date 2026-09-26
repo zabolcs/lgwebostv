@@ -178,7 +178,7 @@ build_private_wam_payload() {
   output=$4
   raw="$output.appinfo"
   next="$output.new"
-  luna-send -t 1 -f -w 1200 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"$target\"}" >"$raw" 2>/dev/null || {
+  luna-send -n 1 -f -w 1200 luna://com.webos.applicationManager/getAppInfo "{\"id\":\"$target\"}" >"$raw" 2>/dev/null || {
     rm -f "$raw" "$next"
     return 1
   }
@@ -239,7 +239,7 @@ prepare_wam_cover_payload() {
   [ ! -s "$QUICK_WAM_PAYLOAD" ] || return 0
   quick_fast_lane_safe || return 1
 
-  running=$(luna-send -t 1 -f -w 1200 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>/dev/null)
+  running=$(luna-send -n 1 -f -w 1200 luna://com.webos.service.webappmanager/listRunningApps '{"includeSysApps":false}' 2>/dev/null)
   if ! echo "$running" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher[.]overlay"'; then
     rm -f "$QUICK_COVER_READY" "$QUICK_WAM_PAYLOAD" "$QUICK_WAM_FULL_PAYLOAD"
     return 1
