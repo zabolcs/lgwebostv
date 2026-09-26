@@ -24,3 +24,12 @@ echo ===LAST===;
 cat /var/lib/webosbrew/launcher-eim/frozen-view/lastinput 2>/dev/null || true"""
     out = subprocess.run(ssh + [command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=True)
     print(out.stdout)
+    extra = [
+        ("APPINFO", "luna-send -n 1 -f -w 2000 luna://com.webos.service.applicationmanager/getAppInfo '{\"id\":\"hu.szabi.launcher\"}' 2>&1 || true"),
+        ("BOOT", "grep -n -E 'firstApp|first app|splash|hu.szabi.launcher|foregroundAppId' /var/log/bootd.log 2>/dev/null | tail -180 || true"),
+        ("MESSAGES", "grep -n -E 'splash|hu.szabi.launcher' /var/log/messages 2>/dev/null | tail -120 || true"),
+    ]
+    for label, cmd in extra:
+        print("===" + label + "===")
+        res = subprocess.run(ssh + [cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+        print(res.stdout)
