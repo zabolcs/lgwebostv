@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# one-shot: v0.5.1 private-WAM cover + retained full launcher (clean JSON retry)
+# one-shot: v0.5.1 private-WAM cover + retained full launcher (post-recovery retry)
 
 jobs:
   rollout:
