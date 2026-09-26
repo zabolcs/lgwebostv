@@ -168,16 +168,18 @@ const result = await evaluate(page, `
       var before = image.src || '';
       tile.focus();
       await sleep(1250);
-      var live = image.src || '';
+      var liveLayer = tile.querySelector('img.launcher-camera-live');
+      var live = liveLayer ? (liveLayer.src || liveLayer.getAttribute('data-live-mjpeg') || '') : '';
       testButton.focus();
       await sleep(180);
+      var afterLayer = tile.querySelector('img.launcher-camera-live');
       var afterBlur = image.src || '';
       cameraResult.snapshotUrl = snapshotUrl;
       cameraResult.before = before;
       cameraResult.live = live;
       cameraResult.afterBlur = afterBlur;
-      cameraResult.promoted = live.indexOf('/api/stream.mjpeg') >= 0;
-      cameraResult.restored = afterBlur.indexOf('/api/stream.mjpeg') < 0;
+      cameraResult.promoted = !!liveLayer && live.indexOf('/api/stream.mjpeg') >= 0;
+      cameraResult.restored = !afterLayer && afterBlur.indexOf('/api/stream.mjpeg') < 0;
     }
   }
 
