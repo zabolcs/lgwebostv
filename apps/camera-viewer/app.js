@@ -774,8 +774,8 @@
       job.stopped = true;
       if (job.timer) root.clearTimeout(job.timer);
       clearGridLivePreview(job);
-      if (job.tile && job.onFocus) job.tile.removeEventListener('focus', job.onFocus);
-      if (job.tile && job.onBlur) job.tile.removeEventListener('blur', job.onBlur);
+      if (job.tile && job.onFocus && typeof job.tile.removeEventListener === 'function') job.tile.removeEventListener('focus', job.onFocus);
+      if (job.tile && job.onBlur && typeof job.tile.removeEventListener === 'function') job.tile.removeEventListener('blur', job.onBlur);
       job.image.onload = null;
       job.image.onerror = null;
       job.image.removeAttribute('src');
