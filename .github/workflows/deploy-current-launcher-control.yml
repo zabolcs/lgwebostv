@@ -91,6 +91,11 @@ jobs:
                       )
                       return node if safe else ast.copy_location(ast.Constant("<redacted>"), node)
               for item in tree.body:
+                  if isinstance(item, (ast.Assign, ast.AnnAssign)):
+                      targets = item.targets if isinstance(item, ast.Assign) else [item.target]
+                      if any(isinstance(t, ast.Name) and t.id in {"OLD", "KNOWN"} for t in targets):
+                          print("SANITIZED_ASSIGNMENT")
+                          print(ast.unparse(item))
                   if isinstance(item, ast.FunctionDef) and item.name in {"connect", "connect_tv"}:
                       print("SANITIZED_" + item.name.upper())
                       print(ast.unparse(Redact().visit(copy.deepcopy(item))))
