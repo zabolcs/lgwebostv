@@ -30,21 +30,70 @@ jobs:
           PVE=192.168.0.120
           KNOWN="$(mktemp)"
           CT_SCRIPT="$(mktemp)"
-          trap 'rm -f "$KNOWN" "$CT_SCRIPT"' EXIT
+          CREDS="$(mktemp)"
+          ASKPASS="$(mktemp)"
+          trap 'rm -f "$KNOWN" "$CT_SCRIPT" "$CREDS" "$ASKPASS"' EXIT
           ssh-keyscan -T 3 "$PVE" >"$KNOWN" 2>/dev/null
-          KEY=""
-          while IFS= read -r candidate; do
-            test -f "$candidate" || continue
-            ssh-keygen -y -f "$candidate" >/dev/null 2>&1 || continue
-            if ssh -T -i "$candidate" -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "root@$PVE" true >/dev/null 2>&1; then
-              KEY="$candidate"
-              break
-            fi
-          done < <(find /media/lgtv /home/actions -type f \( -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.pem' -o -name '*pve*key*' \) -print 2>/dev/null | head -100)
-          test -n "$KEY" || { echo "No runner SSH key authenticates to root@$PVE" >&2; exit 1; }
-          echo "Using PVE key: $KEY"
-          SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "root@$PVE")
-          SCP=(scp -q -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
+          REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
+          test -n "$REMOTE_PY" || { echo "Legacy PVE connection helper not found" >&2; exit 1; }
+          REMOTE_PY="$REMOTE_PY" CREDS="$CREDS" PVE="$PVE" python3 - <<'PY'
+          import ast, os, re, shlex
+          source = open(os.environ["REMOTE_PY"], encoding="utf-8").read()
+          tree = ast.parse(source)
+          values = {}
+          for node in ast.walk(tree):
+              if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                  targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                  value_node = node.value
+                  if isinstance(value_node, ast.Constant) and isinstance(value_node.value, str):
+                      for target in targets:
+                          if isinstance(target, ast.Name):
+                              values[target.id] = value_node.value
+          def resolve(node):
+              if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                  return node.value
+              if isinstance(node, ast.Name):
+                  return values.get(node.id)
+              return None
+          found = None
+          for node in ast.walk(tree):
+              if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "connect":
+                  continue
+              row = {}
+              if node.args:
+                  row["hostname"] = resolve(node.args[0])
+              for kw in node.keywords:
+                  if kw.arg in {"hostname", "host", "username", "user", "password", "key_filename"}:
+                      row[kw.arg] = resolve(kw.value)
+              host = row.get("hostname") or row.get("host")
+              if host == os.environ["PVE"] and row.get("password"):
+                  found = row
+                  break
+          if not found:
+              # Fallback for helpers that assign credentials before calling connect().
+              password = next((v for k, v in values.items() if "PASS" in k.upper() and "PATH" not in k.upper()), None)
+              username = next((v for k, v in values.items() if "USER" in k.upper() and isinstance(v, str)), "root")
+              if password:
+                  found = {"username": username, "password": password}
+          if not found or not found.get("password"):
+              raise SystemExit("PVE password could not be resolved from the legacy helper")
+          user = found.get("username") or found.get("user") or "root"
+          with open(os.environ["CREDS"], "w", encoding="utf-8") as out:
+              out.write("PVE_USER=" + shlex.quote(user) + "\n")
+              out.write("PVE_PASSWORD=" + shlex.quote(found["password"]) + "\n")
+          os.chmod(os.environ["CREDS"], 0o600)
+          PY
+          source "$CREDS"
+          export PVE_PASSWORD DISPLAY=: SSH_ASKPASS_REQUIRE=force
+          cat >"$ASKPASS" <<'SH'
+          #!/bin/sh
+          printf '%s\n' "$PVE_PASSWORD"
+          SH
+          chmod 700 "$ASKPASS"
+          export SSH_ASKPASS="$ASKPASS"
+          SSH=(setsid -w ssh -T -o BatchMode=no -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$PVE_USER@$PVE")
+          SCP=(setsid -w scp -q -o BatchMode=no -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
+          "${SSH[@]}" true
           cat >"$CT_SCRIPT" <<'SH'
           #!/bin/sh
           set -eu
