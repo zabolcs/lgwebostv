@@ -55,6 +55,28 @@ if (!page) throw new Error('NO_ACTIVE_FULL_LAUNCHER');
 const selectedState = await evaluate(page, 'JSON.stringify({hidden:document.hidden,activated:!!(window.PalmSystem&&window.PalmSystem.isActivated),body:document.body.className})');
 console.log('ACTIVE_LAUNCHER=' + selectedState);
 
+const inventory = await evaluate(page, `JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.launcher-camera-preview'), function(tile) {
+  var image = tile.querySelector('img[data-preview-url]');
+  var snapshot = image ? String(image.getAttribute('data-preview-url') || '') : '';
+  var mjpeg = '';
+  try {
+    var parsed = new URL(snapshot);
+    if (parsed.pathname === '/api/frame.jpeg') {
+      parsed.pathname = '/api/stream.mjpeg';
+      mjpeg = parsed.protocol + '//' + parsed.host + parsed.pathname + parsed.search;
+    }
+  } catch (ignore) {}
+  return {
+    itemId: tile.getAttribute('data-item-id') || '',
+    targetId: tile.getAttribute('data-target') || '',
+    label: (tile.getAttribute('aria-label') || tile.textContent || '').trim(),
+    snapshot: snapshot,
+    mjpeg: mjpeg,
+    current: image ? image.src : ''
+  };
+}))`);
+console.log('CAMERA_INVENTORY=' + inventory);
+
 const result = await evaluate(page, `
 (async function () {
   var sleep = function (ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); };
