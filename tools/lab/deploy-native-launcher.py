@@ -137,13 +137,20 @@ try:
 
     pve(conn, "pct exec "+CTID+" -- systemctl daemon-reload")
     if "server.py" in selected:
+        health_probe = shlex.quote(
+            "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=2).read().decode())"
+        )
         state = pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
-            "set -eu; "
+            "set -u; "
             "systemctl restart lgtv-control.service; "
             "systemctl is-active lgtv-control.service; "
-            "python3 -c " + shlex.quote(
-                "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=5).read().decode())"
-            )))
+            "i=0; while [ $i -lt 15 ]; do "
+            "if python3 -c " + health_probe + "; then exit 0; fi; "
+            "i=$((i+1)); sleep 1; "
+            "done; "
+            "systemctl --no-pager --full status lgtv-control.service || true; "
+            "journalctl -u lgtv-control.service -n 40 --no-pager || true; "
+            "exit 1"))
         print(state, flush=True)
 
     if "static/index.html" in selected:
