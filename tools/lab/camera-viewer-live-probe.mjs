@@ -141,7 +141,7 @@ const remoteSteps = [
 ];
 const remoteNav = [];
 for (const step of remoteSteps) {
-  const started = Date.now();
+  const dispatchStarted = Date.now();
   await evaluate(page, `(function(){
     var e=new KeyboardEvent('keydown',{bubbles:true,cancelable:true});
     try{Object.defineProperty(e,'keyCode',{value:${step.code}});}catch(ignore){}
@@ -149,8 +149,10 @@ for (const step of remoteSteps) {
     window.dispatchEvent(e);
     return true;
   })()`);
-  let state = null;
-  while (Date.now() - started < 1200) {
+  const dispatchMs = Date.now() - dispatchStarted;
+  const liveStarted = Date.now();
+  let state = {active:false,totalLive:0,live:false};
+  while (Date.now() - liveStarted < 1200) {
     state = JSON.parse(await evaluate(page, `JSON.stringify((function(){
       var tiles=document.querySelectorAll('.camera-tile');
       var target=tiles[${step.index}];
@@ -158,11 +160,13 @@ for (const step of remoteSteps) {
       return {active:document.activeElement===target,totalLive:document.querySelectorAll('.camera-grid-live').length,live:!!live};
     })())`));
     if (state.active && state.totalLive===1 && state.live) break;
-    await sleep(50);
+    await sleep(40);
   }
-  state.elapsedMs = Date.now() - started;
+  state.dispatchMs = dispatchMs;
+  state.liveMs = Date.now() - liveStarted;
+  state.elapsedMs = dispatchMs + state.liveMs;
   remoteNav.push(state);
-  if (!state.active || state.totalLive !== 1 || !state.live || state.elapsedMs > 1100) throw new Error('REMOTE_NAV_FAIL_' + step.index);
+  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1000 || state.dispatchMs > 500) throw new Error('REMOTE_NAV_FAIL_' + step.index);
 }
 console.log('REMOTE_NAV=' + JSON.stringify(remoteNav));
 
