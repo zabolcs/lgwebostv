@@ -28,8 +28,8 @@ READY=0
 POWER=""
 RUNNING=""
 for i in $(seq 1 24); do
-  POWER="$("${SSH[@]}" "luna-send -n 1 -f -w 1200 luna://com.webos.service.tvpower/power/getPowerState '{}'" 2>&1 || true)"
-  RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1 || true)"
+  POWER="$("${SSH[@]}" "luna-send -t 1 -f -w 1200 luna://com.webos.service.tvpower/power/getPowerState '{}'" 2>&1 || true)"
+  RUNNING="$("${SSH[@]}" "luna-send -t 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}'" 2>&1 || true)"
   if echo "$POWER" | grep -Eq '"state"[[:space:]]*:[[:space:]]*"Active"' &&
      echo "$RUNNING" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'; then
     READY=1
