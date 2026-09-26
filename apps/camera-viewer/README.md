@@ -1,4 +1,4 @@
-# Camera Viewer 0.3.20 – popup overlay
+# Camera Viewer 0.3.21 – full-screen card app
 
 TV-re optimalizált webOS kameraalkalmazás helyi go2rtc profilokhoz. A tárolható kamerák száma nincs
 négyre korlátozva. A rács 2×2, 3×3 vagy 4×4 lehet; ha több kamera van, mint amennyi elfér, az app
@@ -34,20 +34,17 @@ A WebRTC-lejátszó az első, idő előtti autoplay-elutasításkor némítva ú
 12 másodperces kapcsolatindítási timeout vagy signaling/dekóderhiba után vált MJPEG-re. Ha a TV a
 hangos autoplayt blokkolja, a teljes nézet Hang gombja felhasználói gesztussal visszakapcsolhatja.
 
-## Overlay működés
+## Full-screen működés
 
-A Camera Viewer átlátszó `popup` ablakrétegen fut. Ettől a teljes képernyős kamera az alatta futó
-Plexet vagy más előtér-appot nem váltja le normál kártyaalkalmazással; bezárás után az alatta levő
-app azonnal újra látható. A kamera képe teljes képernyőn továbbra is elfedi az alatta futó tartalmat,
-és amíg nyitva van, a távirányító fókuszát a Camera Viewer kezeli.
+A Camera Viewer normál, nem átlátszó webOS `card` alkalmazásként fut. Ez szándékos teljesítmény-beállítás:
+a TV-nek nem kell az alatta futó alkalmazást és a kamera popup rétegét folyamatosan kompozitálnia.
+A kamerarácsban és teljes nézetben egyszerre legfeljebb egy folyamatos médiafolyam aktív.
+A korábbi rejtett `screen-guard.mp4` fallback megszűnt, így nem foglalhat második videó-dekódert.
+A képernyőkímélő-védelem kizárólag a Luna screen-saver API-t használja.
 
-A távirányító-gombból, Home Assistantból vagy a NAS-ról közvetlenül megnyitott teljes kameranézet
-X/Vissza művelete bezárja a popupot. A kamerarácsban kézzel kiválasztott teljes nézet X/Vissza után
-a rácshoz tér vissza. A külön Media Overlay továbbra is a kis méretű, sarokba helyezett PiP-re való.
-
-Az `overlay` window type helyett szándékosan `popup` szerepel a manifestben: ugyanazon a TV-n a
-Media Overlay korábbi `overlay` ablaka 1–2 perc után eltűnt, míg a `popup` több mint öt percig
-látható maradt és explicit bezárással állt le.
+A TV-s felületen az animációk, fókusz-scale és blur effektek ki vannak kapcsolva. A távirányítós
+rácsnavigáció előre számolt rácskoordinátákat használ, ezért egy nyílgomb nem kényszerít DOM
+layout-mérést.
 
 ## Kamerák és gateway
 
