@@ -699,17 +699,26 @@
     function addTypeForRow(rowId) {
       return rowId === 'links' ? 'link' : (rowId === 'cameras' ? 'preset' : 'app');
     }
+    function updateAddTileLinkFields() {
+      var type = root.querySelector('#launcher-add-tile-type').value;
+      var link = type === 'link';
+      var mode = root.querySelector('#launcher-add-tile-link-mode').value || 'website';
+      var method = root.querySelector('#launcher-add-tile-webhook-method').value || 'GET';
+      root.querySelector('#launcher-add-tile-link-mode-field').hidden = !link;
+      root.querySelector('#launcher-add-tile-url-field').hidden = !link;
+      root.querySelector('#launcher-add-tile-webhook-method-field').hidden = !link || mode !== 'webhook';
+      root.querySelector('#launcher-add-tile-webhook-body-field').hidden = !link || mode !== 'webhook' || method !== 'POST';
+    }
     function fillAddTileTargets(rowId, type) {
       var target = root.querySelector('#launcher-add-tile-target');
       var targetField = root.querySelector('#launcher-add-tile-target-field');
       var appPickerField = root.querySelector('#launcher-add-tile-app-picker-field');
-      var urlField = root.querySelector('#launcher-add-tile-url-field');
       target.textContent = '';
       targetField.hidden = type === 'app' || type === 'link' || type === 'allApps' || type === 'settings';
       appPickerField.hidden = type !== 'app';
-      urlField.hidden = type !== 'link';
       if (type === 'app') data.apps.forEach(function (app) { var option = document.createElement('option'); option.value = app.id; option.textContent = app.title + ' · ' + app.id; target.appendChild(option); });
       if (type === 'preset') data.presets.forEach(function (preset) { var option = document.createElement('option'); option.value = preset.id; option.textContent = preset.id + ' · ' + preset.kind; target.appendChild(option); });
+      updateAddTileLinkFields();
     }
     function updateAddTileFields() {
       var rowId = root.querySelector('#launcher-add-tile-row').value;
@@ -722,11 +731,14 @@
       data.config.rows.forEach(function (candidate) { var option = document.createElement('option'); option.value = candidate.id; option.textContent = candidate.title; rowSelect.appendChild(option); });
       rowSelect.value = rowId;
       var typeSelect = root.querySelector('#launcher-add-tile-type'); typeSelect.textContent = '';
-      var types = rowId === 'links' ? [['link', 'Webcím']] : (rowId === 'cameras' ? [['preset', 'Kamera-preset']] : (rowId === 'utilities' ? [['app', 'Alkalmazás'], ['allApps', 'Összes alkalmazás rács'], ['settings', 'Launcher beállítások']] : [['app', 'Alkalmazás']]));
+      var types = rowId === 'links' ? [['link', 'Webcím / webhook']] : (rowId === 'cameras' ? [['preset', 'Kamera-preset']] : (rowId === 'utilities' ? [['app', 'Alkalmazás'], ['allApps', 'Összes alkalmazás rács'], ['settings', 'Launcher beállítások']] : [['app', 'Alkalmazás']]));
       types.forEach(function (entry) { var option = document.createElement('option'); option.value = entry[0]; option.textContent = entry[1]; typeSelect.appendChild(option); });
       typeSelect.value = addTypeForRow(rowId);
       root.querySelector('#launcher-add-tile-label').value = '';
       root.querySelector('#launcher-add-tile-url').value = '';
+      root.querySelector('#launcher-add-tile-link-mode').value = 'website';
+      root.querySelector('#launcher-add-tile-webhook-method').value = 'GET';
+      root.querySelector('#launcher-add-tile-webhook-body').value = '';
       root.querySelector('#launcher-add-tile-app-picked').textContent = 'Nincs kiválasztva';
       updateAddTileFields();
       openOverlay('launcher-add-tile');
@@ -742,10 +754,26 @@
       var next = deepCopy(data.config); var row = next.rows.filter(function (candidate) { return candidate.id === rowId; })[0];
       if (!row) return;
       var id = 'item-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
-      row.items.push({ id: id, type: type, targetId: target, label: label, visible: true, fit: type === 'preset' ? 'cover' : 'contain', iconKey: '', iconUrl: '', backgroundColor: '' });
+      var item = { id: id, type: type, targetId: target, label: label, visible: true, fit: type === 'preset' ? 'cover' : 'contain', iconKey: '', iconUrl: '', backgroundColor: '' };
+      if (type === 'link') {
+        item.linkMode = root.querySelector('#launcher-add-tile-link-mode').value === 'webhook' ? 'webhook' : 'website';
+        item.webhookMethod = item.linkMode === 'webhook' && root.querySelector('#launcher-add-tile-webhook-method').value === 'POST' ? 'POST' : 'GET';
+        item.webhookBody = item.linkMode === 'webhook' && item.webhookMethod === 'POST' ? root.querySelector('#launcher-add-tile-webhook-body').value : '';
+      }
+      row.items.push(item);
       request('/api/launcher/config', 'POST', next).then(function (result) {
         data.config = result.config; closeOverlays(); render(); global.setTimeout(function () { focusNode(root.querySelector('[data-item-id="' + id + '"]')); }, 0); toast('Az új csempe elmentve.');
       }, function (error) { toast(error.message, true); });
+    }
+    function updateTileLinkFields() {
+      var item = findConfigItem(editingTileId);
+      var link = !!item && item.type === 'link';
+      var mode = root.querySelector('#launcher-tile-link-mode').value || 'website';
+      var method = root.querySelector('#launcher-tile-webhook-method').value || 'GET';
+      root.querySelector('#launcher-tile-link-mode-field').hidden = !link;
+      root.querySelector('#launcher-tile-link-url-field').hidden = !link;
+      root.querySelector('#launcher-tile-webhook-method-field').hidden = !link || mode !== 'webhook';
+      root.querySelector('#launcher-tile-webhook-body-field').hidden = !link || mode !== 'webhook' || method !== 'POST';
     }
     function openTileSettings(button) {
       var item = findConfigItem(button.getAttribute('data-item-id'));
@@ -756,8 +784,13 @@
       root.querySelector('#launcher-tile-icon-key').value = item.iconKey || '';
       root.querySelector('#launcher-tile-icon-url').value = item.iconUrl || '';
       root.querySelector('#launcher-tile-background').value = item.backgroundColor || '';
+      root.querySelector('#launcher-tile-link-mode').value = item.linkMode === 'webhook' ? 'webhook' : 'website';
+      root.querySelector('#launcher-tile-link-url').value = item.type === 'link' ? item.targetId : '';
+      root.querySelector('#launcher-tile-webhook-method').value = item.webhookMethod === 'POST' ? 'POST' : 'GET';
+      root.querySelector('#launcher-tile-webhook-body').value = item.webhookBody || '';
+      updateTileLinkFields();
       openOverlay('launcher-tile-settings');
-      root.querySelector('#launcher-tile-fit').focus();
+      root.querySelector(item.type === 'link' ? '#launcher-tile-link-mode' : '#launcher-tile-fit').focus();
     }
     function saveTileSettings(event) {
       event.preventDefault();
@@ -769,6 +802,13 @@
       item.iconUrl = root.querySelector('#launcher-tile-icon-url').value.trim();
       if (item.iconUrl) item.iconKey = '';
       item.backgroundColor = root.querySelector('#launcher-tile-background').value.trim();
+      if (item.type === 'link') {
+        item.targetId = root.querySelector('#launcher-tile-link-url').value.trim();
+        if (!item.targetId) { toast('A webcím / webhook URL kitöltése kötelező.', true); return; }
+        item.linkMode = root.querySelector('#launcher-tile-link-mode').value === 'webhook' ? 'webhook' : 'website';
+        item.webhookMethod = item.linkMode === 'webhook' && root.querySelector('#launcher-tile-webhook-method').value === 'POST' ? 'POST' : 'GET';
+        item.webhookBody = item.linkMode === 'webhook' && item.webhookMethod === 'POST' ? root.querySelector('#launcher-tile-webhook-body').value : '';
+      }
       request('/api/launcher/config', 'POST', next).then(function (result) {
         var itemId = editingTileId; editMode = null; clearEditModeChrome(); data.config = result.config; closeOverlays(); render();
         global.setTimeout(function () { focusNode(root.querySelector('[data-item-id="' + itemId + '"]')); }, 0);
@@ -1037,12 +1077,19 @@
       return button;
     }
     function launch(item, closeAfterLaunch) {
-      toast(item.label + ' indítása…');
-      request('/api/launcher/launch', 'POST', { type: item.type, targetId: item.targetId, label: item.label }).then(function (result) {
+      var webhook = item.type === 'link' && item.linkMode === 'webhook';
+      var payload = { type: item.type, targetId: item.targetId, label: item.label };
+      if (item.type === 'link') {
+        payload.linkMode = webhook ? 'webhook' : 'website';
+        payload.webhookMethod = webhook && item.webhookMethod === 'POST' ? 'POST' : 'GET';
+        payload.webhookBody = webhook && payload.webhookMethod === 'POST' ? String(item.webhookBody || '') : '';
+      }
+      toast(webhook ? item.label + ': webhook küldése…' : item.label + ' indítása…');
+      request('/api/launcher/launch', 'POST', payload).then(function (result) {
         if (result.lastUsed) { data.config.lastUsed = result.lastUsed; quickNeedsRender = true; }
-        renderTopActions(); toast(item.label + ' elindult.');
-        if (options.host === 'full-overlay') parkLauncher(true);
-        else if (closeAfterLaunch) closeQuick();
+        renderTopActions(); toast(webhook ? item.label + ': webhook elküldve.' : item.label + ' elindult.');
+        if (!webhook && options.host === 'full-overlay') parkLauncher(true);
+        else if (!webhook && closeAfterLaunch) closeQuick();
       }, function (error) { toast(error.message, true); });
     }
 
@@ -2055,7 +2102,7 @@
     function fullShell() {
       document.body.classList.remove('launcher-quick-mode', 'launcher-quick-closing');
       quickClosing = false;
-      root.innerHTML = '<section class="launcher-shell"><div class="launcher-wallpaper"></div><div class="launcher-shade"></div><div class="launcher-content"><header class="launcher-top"><div><div class="launcher-clock"></div><div class="launcher-date"></div><button type="button" class="launcher-weather" hidden title="Részletes időjárás"></button></div><div class="launcher-top-actions"></div></header><div class="launcher-rows"></div></div><div id="launcher-all-apps" class="launcher-overlay" hidden><section class="launcher-modal launcher-all-apps-modal"><header class="launcher-modal-head"><h2>Összes telepített alkalmazás</h2><button class="launcher-close" type="button">×</button></header><input class="launcher-app-search" type="search" placeholder="Keresés az alkalmazások között…"><div class="launcher-app-grid"></div></section></div><div id="launcher-weather-detail" class="launcher-overlay" hidden><section class="launcher-modal launcher-weather-modal"><header class="launcher-modal-head"><h2>Részletes időjárás</h2><button class="launcher-close" type="button">×</button></header><div class="launcher-weather-body"></div></section></div><div id="launcher-diagnostics" class="launcher-overlay" hidden><section class="launcher-modal"><header class="launcher-modal-head"><h2>TV diagnosztika</h2><button class="launcher-close" type="button">×</button></header><div class="launcher-diagnostics-body"></div></section></div><div id="launcher-settings" class="launcher-overlay" hidden><section class="launcher-modal launcher-settings-modal"><header class="launcher-modal-head"><h2>Launcher beállítások</h2><button class="launcher-close" type="button">×</button></header><div class="launcher-settings-body"></div></section></div><div id="launcher-tile-settings" class="launcher-overlay" hidden><section class="launcher-modal launcher-tile-settings-modal"><header class="launcher-modal-head"><div><h2>Csempe beállításai</h2><p class="launcher-tile-settings-name"></p></div><button class="launcher-close" type="button">×</button></header><form id="launcher-tile-settings-form" class="launcher-tile-settings-form"><label>Ikon / kép mérete<select id="launcher-tile-fit"><option value="small">Kicsi, középen</option><option value="contain">Arányosan, teljes ikon</option><option value="cover">Teljes csempe kitöltése</option></select></label><label>Saját ikon vagy kép URL (opcionális)<input id="launcher-tile-icon-url" type="url" placeholder="https://…"></label><label>Háttérszín (opcionális)<input id="launcher-tile-background" maxlength="7" placeholder="#123456"></label><p class="launcher-admin-small">Rövid OK: indítás · hosszú OK: ez a beállító.</p><div class="launcher-admin-actions"><button type="submit">Mentés</button><button id="launcher-tile-settings-cancel" class="secondary" type="button">Mégse</button></div></form></section></div><div id="launcher-add-tile" class="launcher-overlay" hidden><section class="launcher-modal launcher-tile-settings-modal"><header class="launcher-modal-head"><h2>Csempe hozzáadása</h2><button class="launcher-close" type="button">×</button></header><form id="launcher-add-tile-form" class="launcher-tile-settings-form"><label>Sor<select id="launcher-add-tile-row"></select></label><label>Típus<select id="launcher-add-tile-type"></select></label><label>Felirat<input id="launcher-add-tile-label" maxlength="64" required></label><label id="launcher-add-tile-target-field">Cél<select id="launcher-add-tile-target"></select></label><label id="launcher-add-tile-app-picker-field"><span>Kiválasztott alkalmazás: <b id="launcher-add-tile-app-picked">Nincs kiválasztva</b></span><button id="launcher-add-tile-app-picker" type="button">Alkalmazás kiválasztása</button></label><label id="launcher-add-tile-url-field">Webcím<input id="launcher-add-tile-url" type="url" placeholder="https://…"></label><p class="launcher-admin-small">A sorhoz illő célok jelennek meg; a csempe a sor végére kerül.</p><div class="launcher-admin-actions"><button type="submit">Hozzáadás</button><button id="launcher-add-tile-cancel" class="secondary" type="button">Mégse</button></div></form></section></div><div class="launcher-toast" hidden></div></section>';
+      root.innerHTML = '<section class="launcher-shell"><div class="launcher-wallpaper"></div><div class="launcher-shade"></div><div class="launcher-content"><header class="launcher-top"><div><div class="launcher-clock"></div><div class="launcher-date"></div><button type="button" class="launcher-weather" hidden title="Részletes időjárás"></button></div><div class="launcher-top-actions"></div></header><div class="launcher-rows"></div></div><div id="launcher-all-apps" class="launcher-overlay" hidden><section class="launcher-modal launcher-all-apps-modal"><header class="launcher-modal-head"><h2>Összes telepített alkalmazás</h2><button class="launcher-close" type="button">×</button></header><input class="launcher-app-search" type="search" placeholder="Keresés az alkalmazások között…"><div class="launcher-app-grid"></div></section></div><div id="launcher-weather-detail" class="launcher-overlay" hidden><section class="launcher-modal launcher-weather-modal"><header class="launcher-modal-head"><h2>Részletes időjárás</h2><button class="launcher-close" type="button">×</button></header><div class="launcher-weather-body"></div></section></div><div id="launcher-diagnostics" class="launcher-overlay" hidden><section class="launcher-modal"><header class="launcher-modal-head"><h2>TV diagnosztika</h2><button class="launcher-close" type="button">×</button></header><div class="launcher-diagnostics-body"></div></section></div><div id="launcher-settings" class="launcher-overlay" hidden><section class="launcher-modal launcher-settings-modal"><header class="launcher-modal-head"><h2>Launcher beállítások</h2><button class="launcher-close" type="button">×</button></header><div class="launcher-settings-body"></div></section></div><div id="launcher-tile-settings" class="launcher-overlay" hidden><section class="launcher-modal launcher-tile-settings-modal"><header class="launcher-modal-head"><div><h2>Csempe beállításai</h2><p class="launcher-tile-settings-name"></p></div><button class="launcher-close" type="button">×</button></header><form id="launcher-tile-settings-form" class="launcher-tile-settings-form"><label id="launcher-tile-link-mode-field" hidden>Művelet<select id="launcher-tile-link-mode"><option value="website">Weboldal</option><option value="webhook">Webhook</option></select></label><label id="launcher-tile-link-url-field" hidden>Webcím / webhook URL<input id="launcher-tile-link-url" type="url" placeholder="http://192.168.…"></label><label id="launcher-tile-webhook-method-field" hidden>Webhook metódus<select id="launcher-tile-webhook-method"><option value="GET">GET</option><option value="POST">POST</option></select></label><label id="launcher-tile-webhook-body-field" hidden>Body (opcionális)<textarea id="launcher-tile-webhook-body" rows="4" placeholder="{&quot;action&quot;:&quot;toggle&quot;}"></textarea></label><label>Ikon / kép mérete<select id="launcher-tile-fit"><option value="small">Kicsi, középen</option><option value="contain">Arányosan, teljes ikon</option><option value="cover">Teljes csempe kitöltése</option></select></label><label>Saját ikon vagy kép URL (opcionális)<input id="launcher-tile-icon-url" type="url" placeholder="https://…"></label><label>Háttérszín (opcionális)<input id="launcher-tile-background" maxlength="7" placeholder="#123456"></label><p class="launcher-admin-small">Rövid OK: indítás · hosszú OK: ez a beállító.</p><div class="launcher-admin-actions"><button type="submit">Mentés</button><button id="launcher-tile-settings-cancel" class="secondary" type="button">Mégse</button></div></form></section></div><div id="launcher-add-tile" class="launcher-overlay" hidden><section class="launcher-modal launcher-tile-settings-modal"><header class="launcher-modal-head"><h2>Csempe hozzáadása</h2><button class="launcher-close" type="button">×</button></header><form id="launcher-add-tile-form" class="launcher-tile-settings-form"><label>Sor<select id="launcher-add-tile-row"></select></label><label>Típus<select id="launcher-add-tile-type"></select></label><label>Felirat<input id="launcher-add-tile-label" maxlength="64" required></label><label id="launcher-add-tile-target-field">Cél<select id="launcher-add-tile-target"></select></label><label id="launcher-add-tile-app-picker-field"><span>Kiválasztott alkalmazás: <b id="launcher-add-tile-app-picked">Nincs kiválasztva</b></span><button id="launcher-add-tile-app-picker" type="button">Alkalmazás kiválasztása</button></label><label id="launcher-add-tile-link-mode-field" hidden>Művelet<select id="launcher-add-tile-link-mode"><option value="website">Weboldal</option><option value="webhook">Webhook</option></select></label><label id="launcher-add-tile-url-field">Webcím / webhook URL<input id="launcher-add-tile-url" type="url" placeholder="http://192.168.…"></label><label id="launcher-add-tile-webhook-method-field" hidden>Webhook metódus<select id="launcher-add-tile-webhook-method"><option value="GET">GET</option><option value="POST">POST</option></select></label><label id="launcher-add-tile-webhook-body-field" hidden>Body (opcionális)<textarea id="launcher-add-tile-webhook-body" rows="4" placeholder="{&quot;action&quot;:&quot;toggle&quot;}"></textarea></label><p class="launcher-admin-small">A sorhoz illő célok jelennek meg; a csempe a sor végére kerül.</p><div class="launcher-admin-actions"><button type="submit">Hozzáadás</button><button id="launcher-add-tile-cancel" class="secondary" type="button">Mégse</button></div></form></section></div><div class="launcher-toast" hidden></div></section>';
       applyRememberedWallpaper();
       var editToolbar = document.createElement('div'); editToolbar.className = 'launcher-edit-toolbar'; editToolbar.hidden = true;
       editToolbar.innerHTML = '<button type="button" data-edit-action="edit" title="Szerkesztés">✎</button><button type="button" data-edit-action="remove" title="Törlés">✕</button>';
@@ -2078,11 +2125,15 @@
       root.querySelector('.launcher-weather').addEventListener('click', function () { if (weatherData) { renderWeatherDetails(weatherData); openOverlay('launcher-weather-detail'); } });
       root.querySelector('#launcher-tile-settings-form').addEventListener('submit', saveTileSettings);
       root.querySelector('#launcher-tile-settings-cancel').addEventListener('click', closeOverlays);
+      root.querySelector('#launcher-tile-link-mode').addEventListener('change', updateTileLinkFields);
+      root.querySelector('#launcher-tile-webhook-method').addEventListener('change', updateTileLinkFields);
       root.querySelector('#launcher-add-tile-form').addEventListener('submit', saveAddTile);
       root.querySelector('#launcher-add-tile-cancel').addEventListener('click', closeOverlays);
       root.querySelector('#launcher-add-tile-app-picker').addEventListener('click', function () { appPickerActive = true; renderAllApps(''); openOverlay('launcher-all-apps'); });
       root.querySelector('#launcher-add-tile-row').addEventListener('change', function () { openAddTile(this.value); });
       root.querySelector('#launcher-add-tile-type').addEventListener('change', updateAddTileFields);
+      root.querySelector('#launcher-add-tile-link-mode').addEventListener('change', updateAddTileLinkFields);
+      root.querySelector('#launcher-add-tile-webhook-method').addEventListener('change', updateAddTileLinkFields);
     }
     function quickShell() {
       stopFullViewWork();
