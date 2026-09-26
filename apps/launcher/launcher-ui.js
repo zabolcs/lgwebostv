@@ -42,6 +42,18 @@
     } catch (ignore) {}
     return '';
   }
+  function directPresetMjpeg(preset) {
+    var preview = directPresetPreview(preset);
+    if (!preview) return '';
+    try {
+      var parsed = new URL(preview);
+      if (parsed.pathname !== '/api/frame.jpeg') return '';
+      parsed.pathname = '/api/stream.mjpeg';
+      return parsed.protocol + '//' + parsed.host + parsed.pathname + parsed.search;
+    } catch (ignore) {}
+    return '';
+  }
+
   function weatherIcon(code) {
     code = Number(code);
     if (code === 0) return '☀';
@@ -138,6 +150,8 @@
     var wallpaperTimer = null;
     var previewTimer = null;
     var previewJobs = [];
+    var previewFocusTimer = null;
+    var activeLivePreview = null;
     var fullWorkTimer = null;
     var clockTimer = null;
     var toastTimer = null;
@@ -948,6 +962,29 @@
               apiBase + '/api/launcher/camera-preview?presetId=' + encodeURIComponent(item.targetId),
               function () { fallback.hidden = true; });
           } else image.__launcherRefresh = function () { image.src = cacheBust(source); };
+
+          var liveMjpegUrl = mode === 'tv' ? directPresetMjpeg(preset) : '';
+          if (liveMjpegUrl) {
+            button.addEventListener('focus', function () {
+              if (previewFocusTimer) global.clearTimeout(previewFocusTimer);
+              previewFocusTimer = global.setTimeout(function () {
+                previewFocusTimer = null;
+                if (document.activeElement !== button || document.hidden || parked) return;
+                if (activeLivePreview && activeLivePreview.image !== image) {
+                  activeLivePreview.image.src = cacheBust(activeLivePreview.snapshotUrl);
+                }
+                activeLivePreview = { image: image, snapshotUrl: source };
+                image.src = liveMjpegUrl;
+              }, 1000);
+            });
+            button.addEventListener('blur', function () {
+              if (previewFocusTimer) { global.clearTimeout(previewFocusTimer); previewFocusTimer = null; }
+              if (activeLivePreview && activeLivePreview.image === image) {
+                activeLivePreview = null;
+                image.src = cacheBust(source);
+              }
+            });
+          }
         } else {
           armFallback(); loadCachedIcon(image, imageCacheKey, source);
         }
@@ -986,6 +1023,11 @@
     function stopPreviewWork() {
       if (previewTimer) { global.clearTimeout(previewTimer); previewTimer = null; }
       previewJobs.forEach(function (timer) { global.clearTimeout(timer); }); previewJobs = [];
+      if (previewFocusTimer) { global.clearTimeout(previewFocusTimer); previewFocusTimer = null; }
+      if (activeLivePreview && activeLivePreview.image) {
+        activeLivePreview.image.removeAttribute('src');
+        activeLivePreview = null;
+      }
     }
 
     var popupParkTimer = null;
