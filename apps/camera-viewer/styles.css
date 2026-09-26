@@ -493,10 +493,15 @@ p {
   column-gap: 12px;
 }
 
+.viewer-mode,
 .viewer-audio {
   min-height: 58px;
   border-color: rgba(255, 255, 255, 0.55);
   background: rgba(7, 14, 19, 0.9);
+}
+
+.viewer-mode {
+  min-width: 154px;
 }
 
 .viewer-status {
