@@ -60,6 +60,14 @@ assert.strictEqual(core.validateProfile(validProfile({ playerPort: 0 })).ok, fal
 
 var profile = core.validateProfile(validProfile()).value;
 assert.strictEqual(core.buildUrl(profile, 'mjpeg'), 'http://192.168.1.10:1984/api/stream.mjpeg?src=front_preview');
+assert.strictEqual(
+  core.buildUrl(core.validateProfile(validProfile({ cameraId: 'kapu', previewSource: 'camera_kapu_felso_h264' })).value, 'mjpeg'),
+  'http://192.168.1.10:1984/api/stream.mjpeg?src=camera_kapu_felso_preview'
+);
+assert.strictEqual(
+  core.buildUrl(core.validateProfile(validProfile({ cameraId: 'kapu2', previewSource: 'camera_kapu_also_h264' })).value, 'mjpeg'),
+  'http://192.168.1.10:1984/api/stream.mjpeg?src=camera_kapu_also_preview'
+);
 assert.strictEqual(core.buildUrl(profile, 'snapshot'), 'http://192.168.1.10:1984/api/frame.jpeg?src=front_preview');
 assert.strictEqual(core.buildPlayerUrl(profile, '0123456789abcdef0123456789abcdef'),
   'http://192.168.1.10:1985/webos-player.html#src=front_h264&session=0123456789abcdef0123456789abcdef&audio=1');
