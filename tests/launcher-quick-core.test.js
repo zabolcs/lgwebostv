@@ -83,7 +83,7 @@ assert.strictEqual(quickManifest.id, 'hu.szabi.launcher.quick');
 assert.strictEqual(quickManifest.version, manifest.version);
 assert.strictEqual(quickManifest.transparent, true);
 assert.strictEqual(quickManifest.defaultWindowType, 'popup');
-assert.strictEqual(manifest.noSplashOnLaunch, false);
+assert.strictEqual(manifest.noSplashOnLaunch, true);
 assert.strictEqual(quickManifest.noSplashOnLaunch, true);
 assert.ok(indexSource.includes('launcher-quick-core.js'));
 assert.ok(appSource.includes("launcherHost === 'quick' ? 'overlay' : 'full'"), 'Unparameterized launches remain full');
