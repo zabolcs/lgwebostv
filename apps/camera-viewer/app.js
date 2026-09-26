@@ -847,7 +847,7 @@
     }
     job.onFocus = function () {
       if (job.focusTimer) root.clearTimeout(job.focusTimer);
-      job.focusTimer = root.setTimeout(startLivePreview, 300);
+      job.focusTimer = root.setTimeout(startLivePreview, 150);
     };
     job.onBlur = function () {
       clearGridLivePreview(job);
@@ -935,7 +935,7 @@
         name.className = 'tile-name';
         name.textContent = profile.name;
         status.className = 'tile-state';
-        status.textContent = 'kapcsolódás…';
+        status.textContent = '';
         caption.appendChild(name);
         caption.appendChild(status);
         tile.appendChild(image);
@@ -956,7 +956,7 @@
         cell.appendChild(tile);
         cell.appendChild(featureButton);
         ui.cameraGrid.appendChild(cell);
-        startGridSnapshot(image, profile, index * 650, status, tile);
+        startGridSnapshot(image, profile, index * 1000, status, tile);
       }(layout.items[i], i));
     }
     startScreenGuard();
