@@ -1,0 +1,21 @@
+name: Deploy current guard
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-current-guard.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Deploy guard
+        run: python3 tools/lab/deploy-current-guard.py
