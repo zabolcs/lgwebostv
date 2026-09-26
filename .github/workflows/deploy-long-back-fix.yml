@@ -33,14 +33,30 @@ jobs:
       - name: Install transport dependency
         run: python -m pip install --disable-pip-version-check --quiet 'paramiko==3.5.1'
 
+      - name: Prepare pinned ARM compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIG_ROOT=/tmp/lgtv-zig-0.14.1
+          ZIG_TAR=/tmp/zig-x86_64-linux-0.14.1.tar.xz
+          if [ ! -x "$ZIG_ROOT/zig" ]; then
+            curl --fail --location --silent --show-error               https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz               --output "$ZIG_TAR"
+            printf '%s  %s\n'               '24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c'               "$ZIG_TAR" | sha256sum -c -
+            rm -rf "$ZIG_ROOT" /tmp/zig-x86_64-linux-0.14.1
+            tar -xJf "$ZIG_TAR" -C /tmp
+            mv /tmp/zig-x86_64-linux-0.14.1 "$ZIG_ROOT"
+          fi
+          "$ZIG_ROOT/zig" version
+          echo "BROKER_CC=$ZIG_ROOT/zig cc -target arm-linux-musleabi" >> "$GITHUB_ENV"
+
       - name: Validate source and regression tests
         shell: bash
         run: |
           set -euo pipefail
-          command -v arm-linux-gnueabi-gcc
           python -m py_compile remote-control/server.py tools/lab/deploy-long-back-fix.py tools/lab/deploy-native-launcher.py
           sh -n tools/generated-tv-scripts/home-key.sh
-          make -C remote-broker clean all
+          make -C remote-broker clean all CC="$BROKER_CC"
+          file remote-broker/remote-broker
           python remote-control/tests/test_server.py
 
       - name: Deploy TV broker and long Back action
