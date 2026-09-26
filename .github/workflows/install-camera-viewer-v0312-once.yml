@@ -1,0 +1,60 @@
+name: Install camera viewer 0.3.12 once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/install-camera-viewer-v0312-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate camera viewer
+        shell: bash
+        run: |
+          set -euo pipefail
+          node apps/camera-viewer/tests/camera-viewer.test.js
+          node apps/camera-viewer/tests/webos-player.test.js
+          python3 scripts/build-all.py
+          test -f build/hu.szabi.cameraviewer_0.3.12_all.ipk
+
+      - name: Install while camera app is stopped
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          SCP=(scp -q -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts")
+
+          RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}' 2>&1" || true)"
+          echo "RUNNING_APPS=$RUNNING"
+          if echo "$RUNNING" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]cameraviewer"'; then
+            echo "Camera Viewer is running; refusing a live replacement." >&2
+            exit 20
+          fi
+
+          STAGE="$("${SSH[@]}" "mktemp -d /tmp/camera-viewer-0312.XXXXXX")"
+          BACKUP="$("${SSH[@]}" "mktemp -d /var/lib/webosbrew/camera-viewer-0312-backup.XXXXXX")"
+          echo "ROLLBACK=$BACKUP"
+          "${SSH[@]}" "tar -czf '$BACKUP/app.tgz' -C /media/developer/apps/usr/palm/applications hu.szabi.cameraviewer"
+          "${SCP[@]}" scripts/install-local-on-tv.sh "root@192.168.0.240:$STAGE/install.sh"
+          "${SCP[@]}" build/hu.szabi.cameraviewer_0.3.12_all.ipk "root@192.168.0.240:$STAGE/hu.szabi.cameraviewer_0.3.12_all.ipk"
+          SHA="$(sha256sum build/hu.szabi.cameraviewer_0.3.12_all.ipk | awk '{print $1}')"
+          "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/hu.szabi.cameraviewer_0.3.12_all.ipk' '$SHA'"
+          "${SSH[@]}" "grep -Eq '\"version\"[[:space:]]*:[[:space:]]*\"0[.]3[.]12\"' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/appinfo.json"
+          "${SSH[@]}" "grep -q 'FULLSCREEN_TRANSPORT_KEY' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/app.js"
+          "${SSH[@]}" "grep -q 'viewer-mode' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/index.html"
+          echo "CAMERA_VIEWER_0312_INSTALL=PASS"
