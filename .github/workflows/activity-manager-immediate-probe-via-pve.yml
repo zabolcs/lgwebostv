@@ -44,11 +44,15 @@ jobs:
           ROOT=Path('/media/lgtv/checkpoint-20260925-20260925-092443')
           APP='hu.szabi.launcher.startupprobe'
           SERVICE='hu.szabi.launcher.startupprobe.service'
-          IPK=Path(os.environ['GITHUB_WORKSPACE'])/'build'/f'{APP}_0.0.2_all.ipk'
+          build_dir=Path(os.environ['GITHUB_WORKSPACE'])/'build'
+          matches=sorted(build_dir.glob(f'{APP}_*_all.ipk'), key=lambda p:p.stat().st_mtime, reverse=True)
+          if not matches:
+              raise SystemExit('startup probe IPK not found after build')
+          IPK=matches[0]
           INSTALL=Path(os.environ['GITHUB_WORKSPACE'])/'scripts'/'install-local-on-tv.sh'
           MANIFEST=f'/media/developer/apps/usr/palm/applications/{APP}/appinfo.json'
           SERVICE_META=f'/media/developer/apps/usr/palm/services/{SERVICE}/services.json'
-          assert IPK.is_file() and INSTALL.is_file()
+          assert INSTALL.is_file()
 
           helpers=sorted(ROOT.rglob('remote.py'), key=lambda p:(len(p.parts),str(p)))
           if not helpers:
