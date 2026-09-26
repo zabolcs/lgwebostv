@@ -4,7 +4,7 @@
   "vendor": "Szabolcs",
   "type": "web",
   "main": "index.html",
-  "title": "Saját gyorsmenü",
+  "title": "SzabiLauncher Quick",
   "icon": "icon.png",
   "largeIcon": "icon-large.png",
   "splashBackground": "splash-black.png",
