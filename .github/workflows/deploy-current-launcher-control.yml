@@ -28,15 +28,23 @@ jobs:
         run: |
           set -euo pipefail
           PVE=192.168.0.120
-          KEY=/media/lgtv/id_rsa
-          test -f "$KEY"
           KNOWN="$(mktemp)"
           CT_SCRIPT="$(mktemp)"
           trap 'rm -f "$KNOWN" "$CT_SCRIPT"' EXIT
           ssh-keyscan -T 3 "$PVE" >"$KNOWN" 2>/dev/null
+          KEY=""
+          while IFS= read -r candidate; do
+            test -f "$candidate" || continue
+            ssh-keygen -y -f "$candidate" >/dev/null 2>&1 || continue
+            if ssh -T -i "$candidate" -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "root@$PVE" true >/dev/null 2>&1; then
+              KEY="$candidate"
+              break
+            fi
+          done < <(find /media/lgtv /home/actions -type f \( -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.pem' -o -name '*pve*key*' \) -print 2>/dev/null | head -100)
+          test -n "$KEY" || { echo "No runner SSH key authenticates to root@$PVE" >&2; exit 1; }
+          echo "Using PVE key: $KEY"
           SSH=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "root@$PVE")
           SCP=(scp -q -i "$KEY" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
-          "${SSH[@]}" true
           cat >"$CT_SCRIPT" <<'SH'
           #!/bin/sh
           set -eu
