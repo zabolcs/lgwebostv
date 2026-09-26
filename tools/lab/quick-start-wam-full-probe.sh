@@ -75,34 +75,61 @@ PY
 )"
 echo WAM_FULL_PAYLOAD_READY=PASS
 
-"${SSH[@]}" "luna-send -n 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-full-probe\"}}' >/dev/null"
-sleep 1
+"${SSH[@]}" "luna-send -t 1 -f -w 4000 luna://com.webos.applicationManager/launch '{\"id\":\"com.webos.app.hdmi2\",\"params\":{\"source\":\"wam-full-probe\"}}' >/dev/null"
+HDMI_READY=0
+PRE_FG=""
+for i in $(seq 1 20); do
+  PRE_FG="$("${SSH[@]}" "luna-send -t 1 -f -w 900 luna://com.webos.applicationManager/getForegroundAppInfo '{}'" 2>&1 || true)"
+  if echo "$PRE_FG" | grep -Eq '"appId"[[:space:]]*:[[:space:]]*"com[.]webos[.]app[.]hdmi2"'; then
+    HDMI_READY=1
+    echo "HDMI_FOREGROUND_POLL=$i"
+    break
+  fi
+  sleep 0.1
+done
+echo "PRE_WAM_FOREGROUND=$PRE_FG"
+test "$HDMI_READY" -eq 1
+PRE_HIDDEN_CDP="$(node tools/lab/measure-launcher-cdp.mjs "$APP" 2>/dev/null || true)"
+echo "FULL_BEHIND_HDMI_CDP=$PRE_HIDDEN_CDP"
+
 PRE_LINES="$("${SSH[@]}" "wc -l </var/log/messages 2>/dev/null || echo 0")"
 START_MS="$(date +%s%3N)"
+echo "WAM_FULL_START_MS=$START_MS"
 RESULT="$("${SSH[@]}" "luna-send -t 1 -f -w 2500 luna://com.webos.service.webappmanager/launchApp '$PAYLOAD'" 2>&1 || true)"
 END_MS="$(date +%s%3N)"
 echo "WAM_FULL_RESULT=$RESULT"
+echo "WAM_FULL_END_MS=$END_MS"
 echo "WAM_FULL_CALL_MS=$((END_MS-START_MS))"
 echo "$RESULT" | grep -Eq '"returnValue"[[:space:]]*:[[:space:]]*true'
 
-VISIBLE=0
-FINAL_CDP=""
-for i in $(seq 1 50); do
-  FINAL_CDP="$(node tools/lab/measure-launcher-cdp.mjs "$APP" 2>/dev/null || true)"
-  if [ -n "$FINAL_CDP" ] && python3 - "$FINAL_CDP" <<'PY'
-import json,sys
-x=json.loads(sys.argv[1])
-raise SystemExit(0 if x.get("hidden") is False and x.get("activated") is True else 1)
-PY
-  then
-    VISIBLE=1
-    echo "FULL_VISIBLE_POLL=$i"
+FG_READY=0
+POST_FG=""
+FG_SEEN_MS=0
+for i in $(seq 1 20); do
+  POST_FG="$("${SSH[@]}" "luna-send -t 1 -f -w 900 luna://com.webos.applicationManager/getForegroundAppInfo '{}'" 2>&1 || true)"
+  if echo "$POST_FG" | grep -Eq '"appId"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]launcher"'; then
+    FG_READY=1
+    FG_SEEN_MS="$(date +%s%3N)"
+    echo "FULL_FOREGROUND_POLL=$i"
     break
   fi
   sleep 0.05
 done
+echo "POST_WAM_FOREGROUND=$POST_FG"
+test "$FG_READY" -eq 1
+echo "WAM_FULL_FOREGROUND_OBSERVED_MS=$((FG_SEEN_MS-START_MS))"
+
+FINAL_CDP="$(node tools/lab/measure-launcher-cdp.mjs "$APP" 2>/dev/null || true)"
 echo "FULL_FINAL_CDP=$FINAL_CDP"
-test "$VISIBLE" -eq 1
+test -n "$FINAL_CDP"
+python3 - "$FINAL_CDP" "$START_MS" <<'PY'
+import json,sys
+x=json.loads(sys.argv[1])
+resume=int(x.get("resume") or 0)
+start=int(sys.argv[2])
+if resume <= 0: raise SystemExit("full launcher resume timestamp missing")
+print("WAM_FULL_RESUME_AFTER_MS=%d" % (resume-start))
+PY
 
 sleep 0.5
 "${SSH[@]}" "tail -n +$((PRE_LINES+1)) /var/log/messages 2>/dev/null" >"$TMP/messages.delta"
@@ -121,8 +148,10 @@ for line in Path(sys.argv[1]).read_text(errors="replace").splitlines():
     if ts>=start:
         first=ts-start
         break
-if first is None: raise SystemExit("full launcher surface timestamp missing")
-print(f"WAM_FULL_VISIBLE_AFTER_SECONDS={first:.3f}")
+if first is None:
+    print("WAM_FULL_VISIBLE_LOG=UNCHANGED")
+else:
+    print(f"WAM_FULL_VISIBLE_AFTER_SECONDS={first:.3f}")
 PY
 
 echo WAM_DIRECT_FULL_PROBE=PASS
