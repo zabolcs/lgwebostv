@@ -883,6 +883,12 @@
       });
     }
     function iconForApp(appId) { return apiBase + '/api/apps/icon?appId=' + encodeURIComponent(appId); }
+    function stopActiveLivePreview() {
+      if (!activeLivePreview) return;
+      var liveImage = activeLivePreview.image;
+      activeLivePreview = null;
+      if (liveImage && liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
+    }
     function localImageKey(kind, id) { return 'hu.szabi.launcher.image.' + kind + '.' + String(id || '').replace(/[^A-Za-z0-9._-]/g, '-'); }
     function readLocalImage(key) { try { return global.localStorage.getItem(key) || ''; } catch (ignore) { return ''; } }
     function removeLocalImage(key) { try { if (key) global.localStorage.removeItem(key); } catch (ignore) {} }
