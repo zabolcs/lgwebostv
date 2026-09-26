@@ -82,10 +82,10 @@ with tempfile.TemporaryDirectory() as temporary:
         install = (
             "set -eu; "
             "test \"$(sha256sum /tmp/hu.szabi.remote-broker.new | awk '{print $1}')\" = " + shlex.quote(digest) + "; "
-            "install -o root -g root -m 700 /tmp/hu.szabi.remote-broker.new " + shlex.quote(TV_ROOT + "/remote-broker") + "; "
-            "install -o root -g root -m 755 /tmp/hu.szabi.home-key.new " + shlex.quote(TV_HOME_KEY) + "; "
+            "cp /tmp/hu.szabi.remote-broker.new " + shlex.quote(TV_ROOT + "/remote-broker") + "; chown root:root " + shlex.quote(TV_ROOT + "/remote-broker") + "; chmod 700 " + shlex.quote(TV_ROOT + "/remote-broker") + "; "
+            "cp /tmp/hu.szabi.home-key.new " + shlex.quote(TV_HOME_KEY) + "; chown root:root " + shlex.quote(TV_HOME_KEY) + "; chmod 755 " + shlex.quote(TV_HOME_KEY) + "; "
             "mkdir -p " + shlex.quote(TV_ROOT + "/actions") + "; "
-            "install -o root -g root -m 700 /tmp/hu.szabi.back-long-action.new " + shlex.quote(TV_ROOT + "/actions/412") + "; "
+            "cp /tmp/hu.szabi.back-long-action.new " + shlex.quote(TV_ROOT + "/actions/412") + "; chown root:root " + shlex.quote(TV_ROOT + "/actions/412") + "; chmod 700 " + shlex.quote(TV_ROOT + "/actions/412") + "; "
             "grep -v '^412=' " + shlex.quote(TV_ROOT + "/bindings.conf") + " >" + shlex.quote(TV_ROOT + "/bindings.conf.new") + "; "
             "printf '%s\\n' '412=long-action' >>" + shlex.quote(TV_ROOT + "/bindings.conf.new") + "; "
             "chown root:root " + shlex.quote(TV_ROOT + "/bindings.conf.new") + "; "
