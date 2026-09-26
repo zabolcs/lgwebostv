@@ -180,6 +180,8 @@ VNC_REMOTE_KEYS = {
     "left": 0xFF51, "up": 0xFF52, "right": 0xFF53, "down": 0xFF54,
     "ok": 0xFF0D, "back": 0xFF1B, "home": 0x1008FF18,
     "playPause": 0x1008FF14, "stop": 0x1008FF15,
+    "volumeUp": 0x1008FF13, "volumeDown": 0x1008FF11, "mute": 0x1008FF12,
+    "channelUp": 0x1008FF27, "channelDown": 0x1008FF26,
 }
 LAUNCHER_HOME_DIR = "/var/lib/webosbrew/launcher-home"
 LAUNCHER_HOME_GUARD = LAUNCHER_HOME_DIR + "/guard.sh"
@@ -1905,6 +1907,17 @@ class TvPowerManager:
                 )
                 self.last_request = ("off", time.monotonic())
             return self.status()
+
+    def reboot(self) -> dict[str, Any]:
+        """Perform a real webOS reboot, bypassing Quick Start standby."""
+        with self.lock:
+            current = self.status()
+            if current.get("state") not in {"on", "turning_on"} or not current.get("reachable"):
+                raise RuntimeError("A teljes újraindításhoz a TV-nek elérhetőnek kell lennie.")
+            worker = "sleep 1; sync; /sbin/reboot"
+            self._run("nohup /bin/sh -c " + shlex.quote(worker) + " </dev/null >/tmp/hu.szabi.full-reboot.log 2>&1 &")
+            self.last_request = None
+            return {"accepted": True, "state": "rebooting"}
 
 
 class LauncherHomeManager:
@@ -4544,6 +4557,16 @@ class ControlHandler(BaseHTTPRequestHandler):
                 requested = validate_tv_power_request(self.read_json())
                 power = self.server.tv_power.set_state(requested)  # type: ignore[attr-defined]
                 self.json_response(HTTPStatus.OK, {"ok": True, "requested": requested, "power": power})
+                return
+            if self.path == "/api/tv/reboot":
+                origin = self.headers.get("Origin")
+                if origin and (urlsplit(origin).scheme not in {"http", "https"} or urlsplit(origin).netloc != self.headers.get("Host")):
+                    raise RequestError("A teljes újraindítás csak a NAS saját webes felületéről indítható.")
+                raw = self.read_json()
+                if raw != {"confirm": True}:
+                    raise RequestError("A teljes újraindítást meg kell erősíteni.")
+                result = self.server.tv_power.reboot()  # type: ignore[attr-defined]
+                self.json_response(HTTPStatus.OK, {"ok": True, "reboot": result})
                 return
             if self.path == "/api/remote-mapper/runtime":
                 origin = self.headers.get("Origin")
