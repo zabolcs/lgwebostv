@@ -1,0 +1,26 @@
+name: Deploy current launcher
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-current-launcher.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate current launcher
+        run: |
+          node tests/launcher-focus.test.js
+          node tests/launcher-input-lifecycle.test.js
+      - name: Deploy current launcher suite
+        run: python3 tools/lab/deploy-current-launcher.py
