@@ -252,7 +252,7 @@ assert.ok(/\.topbar\s*\{[\s\S]*?top:\s*12px;[\s\S]*?right:\s*48px/.test(css));
 assert.ok(/DEFAULT_PREVIEW_INTERVAL_SECONDS\s*=\s*60/.test(script), 'A grid snapshot frissítés fixen 60 másodperc legyen.');
 assert.ok(/gridSnapshotQueue:\s*\[\]/.test(script) && /gridSnapshotBusy:\s*false/.test(script), 'A grid snapshotok közös soros queue-t használjanak.');
 assert.ok(/function pumpGridSnapshotQueue\(\)/.test(script) && /state\.gridSnapshotBusy = true/.test(script), 'Egyszerre legfeljebb egy snapshot töltődjön.');
-assert.ok(/if \(state\.activeGridLiveJob\) \{[\s\S]*?schedule\(DEFAULT_PREVIEW_INTERVAL_SECONDS \* 1000\)/.test(script), 'A snapshot refreshes pause while any live camera is active.');
+assert.ok(/function pumpGridSnapshotQueue\(\)[\s\S]*?state\.activeGridLiveJob\) return;/.test(script), 'A snapshot queue álljon meg, amíg élő kamera fut.');
 assert.ok(/startGridSnapshot\(image, profile, index \* 1000/.test(script), 'A kezdeti snapshotok legyenek széthúzva a WAM terhelés csökkentésére.');
 assert.ok(/liveImage\.style\.display = 'none';[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?removeAttribute\('src'\)/.test(script), 'A live stream bontása ne blokkolja a fókuszváltást.');
 assert.strictEqual(/id="preview-interval-seconds"/.test(html), false, 'A percenkénti snapshot frissítés ne legyen külön állítható.');
