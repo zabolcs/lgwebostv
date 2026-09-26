@@ -1,0 +1,96 @@
+name: Install launcher 0.3.14 and reboot-test once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/install-launcher-0314-reboot-test-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install-test:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Validate and build launcher hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check apps/launcher/launcher-ui.js
+          node tests/launcher-home-lifecycle.test.js
+          node tests/launcher-input-lifecycle.test.js
+          python3 tests/test_launcher_packaging.py
+          rm -rf build
+          python3 scripts/build-all.py
+          test -f build/hu.szabi.launcher_0.3.14_all.ipk
+          test -f build/hu.szabi.launcher.quick_0.3.14_all.ipk
+          test -f build/hu.szabi.launcher.overlay_0.3.14_all.ipk
+
+      - name: Install with rollback copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+          SCP=(scp -q -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts")
+
+          STAGE="$("${SSH[@]}" "mktemp -d /tmp/launcher-0314.XXXXXX")"
+          BACKUP="$("${SSH[@]}" "mktemp -d /var/lib/webosbrew/launcher-0314-backup.XXXXXX")"
+          echo "ROLLBACK=$BACKUP"
+          "${SSH[@]}" "tar -czf '$BACKUP/apps.tgz' -C /media/developer/apps/usr/palm/applications hu.szabi.launcher hu.szabi.launcher.quick hu.szabi.launcher.overlay"
+          "${SCP[@]}" scripts/install-local-on-tv.sh "root@192.168.0.240:$STAGE/install.sh"
+          for pkg in \
+            hu.szabi.launcher_0.3.14_all.ipk \
+            hu.szabi.launcher.quick_0.3.14_all.ipk \
+            hu.szabi.launcher.overlay_0.3.14_all.ipk; do
+            "${SCP[@]}" "build/$pkg" "root@192.168.0.240:$STAGE/$pkg"
+            sha="$(sha256sum "build/$pkg" | awk '{print $1}')"
+            "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/$pkg' '$sha'"
+            sleep 2
+          done
+          "${SSH[@]}" "grep -q '}, 5000);' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
+          echo "INSTALL_0314=PASS"
+
+      - name: Reboot and observe loader recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@192.168.0.240)
+
+          start="$(date +%s)"
+          "${SSH[@]}" "sync; reboot" || true
+
+          down=0
+          for i in $(seq 1 60); do
+            if ! "${SSH[@]}" "true" >/dev/null 2>&1; then down=1; break; fi
+            sleep 1
+          done
+          test "$down" = 1
+
+          up=0
+          for i in $(seq 1 120); do
+            ssh-keyscan -T 1 192.168.0.240 >"$TMP/known_hosts" 2>/dev/null || true
+            if "${SSH[@]}" "true" >/dev/null 2>&1; then up=1; break; fi
+            sleep 1
+          done
+          test "$up" = 1
+          echo "SSH_BACK_AFTER_SECONDS=$(( $(date +%s) - start ))"
+
+          sleep 8
+          "${SSH[@]}" "echo APPINFO_BEGIN; cat /media/developer/apps/usr/palm/applications/hu.szabi.launcher/appinfo.json; echo APPINFO_END; echo GUARD_PID=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true); tail -n 80 /tmp/hu.szabi.launcher-wake.log 2>/dev/null || true"
+          echo "REBOOT_TEST_0314=PASS"
