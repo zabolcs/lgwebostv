@@ -44,20 +44,19 @@ jobs:
           else
             echo "PARAMIKO_SITE=NONE"
           fi
-          echo "Checkpoint path candidates:"
-          find /media/lgtv /home/actions/lgtv-import -type f \( -iname '*checkpoint*lgtv*2026*08*31*' -o -iname '*lgtv*2026*08*31*' -o -name 'known_hosts.pve' \) -print 2>/dev/null | head -50
 
       - name: Deploy server only
         run: |
           set -euo pipefail
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
-          OLD_FILE="$(find /media/lgtv /home/actions/lgtv-import -type f -name 'CHECKPOINT-LGTV-2026-08-31.md' -print -quit 2>/dev/null || true)"
-          KNOWN_FILE="$(find /media/lgtv /home/actions/lgtv-import -type f -name 'known_hosts.pve' -print -quit 2>/dev/null || true)"
+          OLD_FILE="$(grep -RIl --include='*.md' -- '- SSH jelszó: `' /media/lgtv /home/actions/lgtv-import 2>/dev/null | head -1 || true)"
           test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
-          test -n "$OLD_FILE" || { echo "legacy LGTV checkpoint not found" >&2; exit 1; }
-          test -n "$KNOWN_FILE" || { echo "legacy PVE known_hosts not found" >&2; exit 1; }
+          test -n "$OLD_FILE" || { echo "legacy LGTV credential checkpoint not found" >&2; exit 1; }
 
           PATCHED_REMOTE_DIR="$(mktemp -d)"
+          KNOWN_FILE="$PATCHED_REMOTE_DIR/known_hosts.pve"
+          ssh-keyscan -T 3 192.168.0.120 >"$KNOWN_FILE" 2>/dev/null
+          test -s "$KNOWN_FILE" || { echo "PVE host key could not be read" >&2; exit 1; }
           trap 'rm -rf "$PATCHED_REMOTE_DIR"' EXIT
           REMOTE_PY="$REMOTE_PY" OLD_FILE="$OLD_FILE" KNOWN_FILE="$KNOWN_FILE" PATCHED_REMOTE_DIR="$PATCHED_REMOTE_DIR" python3 - <<'PY'
           import os, re
