@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# restore v0.5.4 after diagnostic v0.4 rollback
+
 # long-back guard redeploy
 
 jobs:
