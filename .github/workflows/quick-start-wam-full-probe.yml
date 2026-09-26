@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# retry: wait for TV SSH and stable Active WAM
+# retry: TV recovered, measure retained full WAM
 
 jobs:
   probe:
