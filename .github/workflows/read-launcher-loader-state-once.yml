@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# freeze probe
+
 jobs:
   read:
     runs-on: [self-hosted, Linux, X64]
