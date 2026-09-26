@@ -56,6 +56,7 @@ jobs:
           PYROOT="$(printf '%s\n' "$PARAMIKO_SITE" | sed -E 's#/lib/python[0-9.]+/site-packages$##')"
           PYTHON="$PYROOT/bin/python3"
           test -x "$PYTHON"
+          export LD_LIBRARY_PATH="$PYROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           "$PYTHON" -c 'import paramiko'
           echo "Using runner Python: $PYTHON"
           echo "Using remote helper: $REMOTE_PY"
