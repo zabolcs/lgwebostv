@@ -27,7 +27,7 @@ function validProfile(overrides) {
 var appInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'appinfo.json'), 'utf8'));
 var packageInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'packageinfo.json'), 'utf8'));
 assert.strictEqual(appInfo.id, 'hu.szabi.cameraviewer');
-assert.strictEqual(appInfo.version, '0.3.15');
+assert.strictEqual(appInfo.version, '0.3.16');
 assert.strictEqual(appInfo.type, 'web');
 assert.strictEqual(appInfo.transparent, true);
 assert.strictEqual(appInfo.defaultWindowType, 'popup');
@@ -250,6 +250,9 @@ assert.ok(/id="settings-button"[^>]*aria-label="Beállítások"/.test(html));
 assert.ok(/\.topbar\s*\{[\s\S]*?position:\s*absolute/.test(css));
 assert.ok(/\.topbar\s*\{[\s\S]*?top:\s*12px;[\s\S]*?right:\s*48px/.test(css));
 assert.ok(/DEFAULT_PREVIEW_INTERVAL_SECONDS\s*=\s*60/.test(script), 'A grid snapshot frissítés fixen 60 másodperc legyen.');
+assert.ok(/if \(state\.activeGridLiveJob\) \{[\s\S]*?schedule\(DEFAULT_PREVIEW_INTERVAL_SECONDS \* 1000\)/.test(script), 'A snapshot refreshes pause while any live camera is active.');
+assert.ok(/startGridSnapshot\(image, profile, index \* 650/.test(script), 'A kezdeti snapshotok legyenek széthúzva a WAM terhelés csökkentésére.');
+assert.ok(/liveImage\.style\.display = 'none';[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?removeAttribute\('src'\)/.test(script), 'A live stream bontása ne blokkolja a fókuszváltást.');
 assert.strictEqual(/id="preview-interval-seconds"/.test(html), false, 'A percenkénti snapshot frissítés ne legyen külön állítható.');
 assert.ok(/FLOATING_MESSAGE_TIMEOUT\s*=\s*5000/.test(script));
 assert.ok(/\.camera-grid\s*\{[\s\S]*?height:\s*100%/.test(css));
@@ -293,4 +296,4 @@ assert.ok(/openViewer\(profile, true\)/.test(script));
 assert.ok(/closeViewer\(true\)/.test(script));
 assert.ok(/html,[\s\S]*body\s*\{[\s\S]*background:\s*transparent/.test(css));
 
-console.log('camera-viewer 0.3.15 focused MJPEG tests: PASS');
+console.log('camera-viewer 0.3.16 focused MJPEG tests: PASS');
