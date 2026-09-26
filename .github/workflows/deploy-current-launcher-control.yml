@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          clean: false
 
       - name: Isolated Python
         uses: actions/setup-python@v6
