@@ -1352,6 +1352,7 @@
     if (!profile || state.suspended) return;
     if (closeAppOnExit === true) state.viewerClosesApp = true;
     else if (closeAppOnExit === false) state.viewerClosesApp = false;
+    var needsDecoderHandoff = !!state.activeGridLiveJob || !!state.activeGridSnapshotJob;
     stopGridJobs();
     stopActivePlayer();
     stopLegacyScreenGuard();
@@ -1380,10 +1381,14 @@
     };
     state.activeJob = job;
     updateViewerTransportToggle(profile);
-    job.handoffTimer = root.setTimeout(function () {
-      job.handoffTimer = null;
-      if (currentJob(job)) startTransport(job);
-    }, FULLSCREEN_HANDOFF_DELAY_MS);
+    if (needsDecoderHandoff) {
+      job.handoffTimer = root.setTimeout(function () {
+        job.handoffTimer = null;
+        if (currentJob(job)) startTransport(job);
+      }, FULLSCREEN_HANDOFF_DELAY_MS);
+    } else {
+      startTransport(job);
+    }
     ui.viewerScreen.focus();
   }
 
