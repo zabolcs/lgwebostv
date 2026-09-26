@@ -40,10 +40,15 @@ with tempfile.TemporaryDirectory() as tmp:
     for pkg, digest in packages:
         print(checked("sh " + shlex.quote(stage + "/install.sh") + " " + shlex.quote(stage + "/" + pkg.name) + " " + digest), flush=True)
         time.sleep(2)
+    expected_versions = {}
+    for slug in SLUGS:
+        app = builder.APPS[slug]["id"]
+        manifest_path = ROOT / "apps" / (builder.APPS[slug].get("manifest") or (builder.APPS[slug].get("source", slug) + "/appinfo.json"))
+        expected_versions[app] = json.loads(manifest_path.read_text(encoding="utf-8"))["version"]
     for slug in SLUGS:
         app = builder.APPS[slug]["id"]
         manifest = json.loads(checked("cat /media/developer/apps/usr/palm/applications/" + app + "/appinfo.json"))
-        assert manifest["version"] == "0.3.15", (app, manifest["version"])
+        assert manifest["version"] == expected_versions[app], (app, manifest["version"], expected_versions[app])
     runtime = checked("cat /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js")
     assert "directPresetMjpeg" in runtime
     assert "launcher-loading-active" in runtime
