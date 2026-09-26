@@ -13,7 +13,7 @@
   var HOSTED_PLAYER_TIMEOUT = 14000;
   var MJPEG_TIMEOUT = 9000;
   var FLOATING_MESSAGE_TIMEOUT = 5000;
-  var DEFAULT_PREVIEW_INTERVAL_SECONDS = 5;
+  var DEFAULT_PREVIEW_INTERVAL_SECONDS = 60;
   var MIN_PREVIEW_INTERVAL_SECONDS = 1;
   var MAX_PREVIEW_INTERVAL_SECONDS = 60;
   var LAYOUT_SIZES = [2, 3, 4];
@@ -241,12 +241,7 @@
     if (input.preventScreenSaver !== undefined && typeof input.preventScreenSaver !== 'boolean') {
       throw new Error('A képernyőkímélő-védelem logikai érték legyen.');
     }
-    var previewIntervalSeconds = Number(input.previewIntervalSeconds == null
-      ? DEFAULT_PREVIEW_INTERVAL_SECONDS : input.previewIntervalSeconds);
-    if (!Number.isInteger(previewIntervalSeconds) || previewIntervalSeconds < MIN_PREVIEW_INTERVAL_SECONDS ||
-        previewIntervalSeconds > MAX_PREVIEW_INTERVAL_SECONDS) {
-      throw new Error('Az előnézet frissítési ideje 1 és 60 másodperc közötti egész szám legyen.');
-    }
+    var previewIntervalSeconds = DEFAULT_PREVIEW_INTERVAL_SECONDS;
     return {
       layoutSize: layoutSize,
       featuredCameraId: featuredCameraId,
@@ -508,6 +503,7 @@
     view: 'grid',
     suspended: false,
     gridJobs: [],
+    activeGridLiveJob: null,
     activeJob: null,
     generation: 0,
     seenRequestIds: [],
@@ -766,6 +762,7 @@
       job.liveBadge = null;
     }
     if (job.tile) job.tile.classList.remove('is-live');
+    if (state.activeGridLiveJob === job) state.activeGridLiveJob = null;
   }
 
   function stopGridJobs() {
@@ -803,13 +800,19 @@
     }
     function refresh() {
       if (job.stopped || state.suspended || state.view !== 'grid') return;
+      if (state.activeGridLiveJob === job) {
+        schedule(DEFAULT_PREVIEW_INTERVAL_SECONDS * 1000);
+        return;
+      }
       job.requestStartedAt = Date.now();
       image.src = cacheBusted(buildUrl(profile, 'snapshot'));
     }
     function startLivePreview() {
       job.focusTimer = null;
       if (job.stopped || state.suspended || state.view !== 'grid' || root.document.activeElement !== tile) return;
+      if (state.activeGridLiveJob && state.activeGridLiveJob !== job) clearGridLivePreview(state.activeGridLiveJob);
       clearGridLivePreview(job);
+      state.activeGridLiveJob = job;
       var liveImage = root.document.createElement('img');
       var liveBadge = root.document.createElement('span');
       liveImage.alt = '';
@@ -829,7 +832,7 @@
     }
     job.onFocus = function () {
       if (job.focusTimer) root.clearTimeout(job.focusTimer);
-      job.focusTimer = root.setTimeout(startLivePreview, 1000);
+      job.focusTimer = root.setTimeout(startLivePreview, 300);
     };
     job.onBlur = function () {
       clearGridLivePreview(job);
@@ -838,9 +841,9 @@
     tile.addEventListener('blur', job.onBlur);
     image.onload = function () {
       job.failures = 0;
-      statusNode.textContent = 'élő előnézet';
+      statusNode.textContent = '';
       statusNode.classList.remove('offline');
-      schedule(previewRefreshDelay(state.settings.previewIntervalSeconds, job.requestStartedAt, Date.now()));
+      schedule(previewRefreshDelay(DEFAULT_PREVIEW_INTERVAL_SECONDS, job.requestStartedAt, Date.now()));
     };
     image.onerror = function () {
       job.failures += 1;
@@ -1266,7 +1269,6 @@
   function populateViewSettings() {
     ui.layoutSize.value = String(state.settings.layoutSize);
     ui.preventScreenSaver.checked = state.settings.preventScreenSaver;
-    ui.previewIntervalSeconds.value = String(state.settings.previewIntervalSeconds);
     updateFeaturedSelect();
   }
 
@@ -1276,7 +1278,7 @@
         layoutSize: ui.layoutSize.value,
         featuredCameraId: ui.featuredCamera.value,
         preventScreenSaver: ui.preventScreenSaver.checked,
-        previewIntervalSeconds: ui.previewIntervalSeconds.value
+        previewIntervalSeconds: DEFAULT_PREVIEW_INTERVAL_SECONDS
       });
       state.page = 0;
       if (!saveProfiles()) return;
@@ -1656,7 +1658,6 @@
     ui.layoutSize = byId('layout-size');
     ui.featuredCamera = byId('featured-camera');
     ui.preventScreenSaver = byId('prevent-screensaver');
-    ui.previewIntervalSeconds = byId('preview-interval-seconds');
     ui.settingsError = byId('settings-error');
 
     ui.viewerClose.addEventListener('click', closeViewer);
