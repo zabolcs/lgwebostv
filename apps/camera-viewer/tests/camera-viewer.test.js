@@ -27,7 +27,7 @@ function validProfile(overrides) {
 var appInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'appinfo.json'), 'utf8'));
 var packageInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'packageinfo.json'), 'utf8'));
 assert.strictEqual(appInfo.id, 'hu.szabi.cameraviewer');
-assert.strictEqual(appInfo.version, '0.3.14');
+assert.strictEqual(appInfo.version, '0.3.15');
 assert.strictEqual(appInfo.type, 'web');
 assert.strictEqual(appInfo.transparent, true);
 assert.strictEqual(appInfo.defaultWindowType, 'popup');
@@ -293,4 +293,4 @@ assert.ok(/openViewer\(profile, true\)/.test(script));
 assert.ok(/closeViewer\(true\)/.test(script));
 assert.ok(/html,[\s\S]*body\s*\{[\s\S]*background:\s*transparent/.test(css));
 
-console.log('camera-viewer 0.3.14 focused MJPEG tests: PASS');
+console.log('camera-viewer 0.3.15 focused MJPEG tests: PASS');
