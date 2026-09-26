@@ -64,10 +64,7 @@ jobs:
             "${SCP[@]}" "$pkg" "root@$SSH_HOST:$STAGE/$(basename "$pkg")"
           done
 
-          for pkg in             hu.szabi.launcher_0.3.13_all.ipk             hu.szabi.launcher.quick_0.3.13_all.ipk             hu.szabi.launcher.overlay_0.3.13_all.ipk; do
-            sha="$(sha256sum "build/$pkg" | awk '{print $1}')"
-            "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/$pkg' '$sha'"
-          done
+          echo "Launcher packages already installed as 0.3.13; skipping duplicate app-install calls."
 
           "${SSH[@]}" "grep -q 'beginResumeLoading' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
           "${SSH[@]}" "grep -q 'long Back generates repeat events' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
