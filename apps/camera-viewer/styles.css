@@ -347,13 +347,13 @@ p {
   letter-spacing: 0.08em;
   line-height: 1;
   pointer-events: none;
-  column-gap: 6px;
 }
 
 .camera-grid-live-badge::before {
   display: block;
   width: 8px;
   height: 8px;
+  margin-right: 7px;
   border-radius: 50%;
   background: #ff4b55;
   box-shadow: 0 0 9px rgba(255, 75, 85, 0.72);
