@@ -37,3 +37,6 @@ jobs:
             echo "--- DEVICES ---"
             for e in /dev/input/event*; do n=$(cat /sys/class/input/${e##*/}/device/name 2>/dev/null || true); case "$n" in *"M-RCU"*) echo "$e :: $n";; esac; done
           '
+          scp -q -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" root@192.168.0.240:/var/lib/webosbrew/remote-broker/remote-broker /tmp/live-remote-broker
+          file /tmp/live-remote-broker
+          readelf -h /tmp/live-remote-broker | sed -n '1,30p'
