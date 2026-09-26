@@ -11,11 +11,16 @@
   var CAMERA_ID = /^[a-z0-9][a-z0-9._-]{0,31}$/;
   var REQUEST_ID = /^[0-9a-fA-F]{32}$/;
   var HOSTED_PLAYER_TIMEOUT = 14000;
-  var MJPEG_TIMEOUT = 9000;
   var FLOATING_MESSAGE_TIMEOUT = 5000;
   var DEFAULT_PREVIEW_INTERVAL_SECONDS = 60;
-  var GRID_LIVE_FOCUS_DELAY_MS = 600;
+  var GRID_SNAPSHOT_STAGGER_MS = 9000;
+  var GRID_CACHE_WARM_STAGGER_MS = 150;
+  var GRID_LIVE_FOCUS_DELAY_MS = 800;
   var GRID_LIVE_RETRY_DELAY_MS = 1800;
+  var FULLSCREEN_HANDOFF_DELAY_MS = 160;
+  var SNAPSHOT_CACHE_MAX_AGE = '24h';
+  var SNAPSHOT_REFRESH_CACHE_MAX_AGE = '55s';
+  var EMPTY_IMAGE_SRC = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   var MIN_PREVIEW_INTERVAL_SECONDS = 1;
   var MAX_PREVIEW_INTERVAL_SECONDS = 60;
   var LAYOUT_SIZES = [2, 3, 4];
@@ -169,6 +174,12 @@
   function buildPlayerUrl(profile, session) {
     if (!profile.playerPath) return '';
     return gatewayOrigin(profile, true) + profile.playerPath + '#src=' + profile.primarySource + '&session=' + session + '&audio=' + (profile.audio ? '1' : '0');
+  }
+
+  function buildSnapshotUrl(profile, maxAge) {
+    var url = buildUrl(profile, 'snapshot');
+    if (!maxAge) return url;
+    return url + '&cache=' + encodeURIComponent(String(maxAge));
   }
 
   function cacheBusted(url) {
@@ -478,6 +489,7 @@
     validateProfile: validateProfile,
     validatePlayerPath: validatePlayerPath,
     buildUrl: buildUrl,
+    buildSnapshotUrl: buildSnapshotUrl,
     buildPlayerUrl: buildPlayerUrl,
     gatewayOrigin: gatewayOrigin,
     migrateLegacyProfile: migrateLegacyProfile,
@@ -517,6 +529,7 @@
     gridJobs: [],
     gridSnapshotQueue: [],
     gridSnapshotBusy: false,
+    activeGridSnapshotJob: null,
     activeGridLiveJob: null,
     activeJob: null,
     generation: 0,
@@ -760,6 +773,14 @@
     return result;
   }
 
+  function hardStopImage(image) {
+    if (!image) return;
+    image.onload = null;
+    image.onerror = null;
+    try { image.src = EMPTY_IMAGE_SRC; } catch (error) { /* best effort */ }
+    try { image.removeAttribute('src'); } catch (removeError) { /* best effort */ }
+  }
+
   function clearGridLivePreview(job) {
     if (!job) return;
     if (job.focusTimer) root.clearTimeout(job.focusTimer);
@@ -771,97 +792,186 @@
     if (job.tile) job.tile.classList.remove('is-live');
     if (state.activeGridLiveJob === job) {
       state.activeGridLiveJob = null;
-      root.setTimeout(pumpGridSnapshotQueue, 80);
+      root.setTimeout(function () {
+        pumpGridSnapshotQueue();
+        startScreenGuard();
+      }, 80);
     }
     if (liveBadge && liveBadge.parentNode) liveBadge.parentNode.removeChild(liveBadge);
     if (liveImage) {
       liveImage.style.display = 'none';
-      root.setTimeout(function () {
-        liveImage.onload = null;
-        liveImage.onerror = null;
-        liveImage.removeAttribute('src');
-        if (liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
-      }, 0);
+      hardStopImage(liveImage);
+      if (liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
     }
+  }
+
+  function snapshotQueueFlag(kind) {
+    return kind === 'cache' ? 'cacheQueued' : 'snapshotQueued';
+  }
+
+  function enqueueGridSnapshot(job, kind) {
+    if (!job || job.stopped) return;
+    var flag = snapshotQueueFlag(kind);
+    if (job[flag]) return;
+    job[flag] = true;
+    state.gridSnapshotQueue.push({ job: job, kind: kind });
+  }
+
+  function scheduleGridSnapshot(job, kind, wait) {
+    var timerKey = kind === 'cache' ? 'cacheTimer' : 'timer';
+    if (job[timerKey]) root.clearTimeout(job[timerKey]);
+    job[timerKey] = root.setTimeout(function () {
+      job[timerKey] = null;
+      if (job.stopped || state.suspended || state.view !== 'grid') return;
+      enqueueGridSnapshot(job, kind);
+      pumpGridSnapshotQueue();
+    }, Math.max(0, Number(wait) || 0));
+  }
+
+  function finishGridSnapshot(job, loader, kind, succeeded) {
+    if (!job || job.loader !== loader) return;
+    job.loader = null;
+    job.loadingKind = null;
+    if (state.activeGridSnapshotJob === job) state.activeGridSnapshotJob = null;
+    state.gridSnapshotBusy = false;
+
+    if (succeeded && !job.stopped && state.view === 'grid' && job.tile &&
+        root.document.documentElement.contains(job.tile)) {
+      var oldImage = job.image;
+      loader.onload = null;
+      loader.onerror = null;
+      loader.alt = '';
+      if (oldImage && oldImage.parentNode) oldImage.parentNode.replaceChild(loader, oldImage);
+      job.image = loader;
+      job.hasSnapshot = true;
+      job.failures = 0;
+      job.statusNode.textContent = '';
+      job.statusNode.classList.remove('offline');
+    } else {
+      hardStopImage(loader);
+      if (!job.hasSnapshot && !job.stopped) {
+        job.failures += 1;
+        job.statusNode.textContent = 'nincs előnézet';
+        job.statusNode.classList.add('offline');
+      }
+    }
+
+    if (kind === 'fresh' && !job.stopped && !state.suspended && state.view === 'grid') {
+      scheduleGridSnapshot(
+        job,
+        'fresh',
+        previewRefreshDelay(DEFAULT_PREVIEW_INTERVAL_SECONDS, job.requestStartedAt, Date.now())
+      );
+    }
+    root.setTimeout(pumpGridSnapshotQueue, 80);
+  }
+
+  function abortActiveGridSnapshot(requeue) {
+    var job = state.activeGridSnapshotJob;
+    if (!job) return;
+    var loader = job.loader;
+    var kind = job.loadingKind || 'fresh';
+    job.loader = null;
+    job.loadingKind = null;
+    state.activeGridSnapshotJob = null;
+    state.gridSnapshotBusy = false;
+    hardStopImage(loader);
+    if (requeue && !job.stopped && state.view === 'grid') enqueueGridSnapshot(job, kind);
   }
 
   function pumpGridSnapshotQueue() {
     if (state.gridSnapshotBusy || state.suspended || state.view !== 'grid' || state.activeGridLiveJob) return;
     while (state.gridSnapshotQueue.length) {
-      var job = state.gridSnapshotQueue.shift();
-      job.snapshotQueued = false;
-      if (job.stopped || !job.image || !root.document.documentElement.contains(job.image)) continue;
+      var entry = state.gridSnapshotQueue.shift();
+      var job = entry.job;
+      var kind = entry.kind === 'cache' ? 'cache' : 'fresh';
+      job[snapshotQueueFlag(kind)] = false;
+      if (job.stopped || !job.image || !job.tile || !root.document.documentElement.contains(job.tile)) continue;
+
+      var loader = root.document.createElement('img');
       state.gridSnapshotBusy = true;
+      state.activeGridSnapshotJob = job;
+      job.loader = loader;
+      job.loadingKind = kind;
       job.requestStartedAt = Date.now();
-      job.image.src = cacheBusted(buildUrl(job.profile, 'snapshot'));
+
+      loader.onload = function (snapshotJob, snapshotLoader, snapshotKind) {
+        return function () { finishGridSnapshot(snapshotJob, snapshotLoader, snapshotKind, true); };
+      }(job, loader, kind);
+      loader.onerror = function (snapshotJob, snapshotLoader, snapshotKind) {
+        return function () { finishGridSnapshot(snapshotJob, snapshotLoader, snapshotKind, false); };
+      }(job, loader, kind);
+
+      loader.src = cacheBusted(buildSnapshotUrl(
+        job.profile,
+        kind === 'cache' ? SNAPSHOT_CACHE_MAX_AGE : SNAPSHOT_REFRESH_CACHE_MAX_AGE
+      ));
       return;
     }
   }
 
-  function queueGridSnapshot(job, wait) {
-    if (job.timer) root.clearTimeout(job.timer);
-    job.timer = root.setTimeout(function () {
-      job.timer = null;
-      if (job.stopped || state.suspended || state.view !== 'grid') return;
-      if (!job.snapshotQueued) {
-        job.snapshotQueued = true;
-        state.gridSnapshotQueue.push(job);
-      }
-      pumpGridSnapshotQueue();
-    }, wait);
-  }
-
   function stopGridJobs() {
+    abortActiveGridSnapshot(false);
     for (var i = 0; i < state.gridJobs.length; i += 1) {
       var job = state.gridJobs[i];
       job.stopped = true;
       if (job.timer) root.clearTimeout(job.timer);
+      if (job.cacheTimer) root.clearTimeout(job.cacheTimer);
       if (job.liveRetryTimer) { root.clearTimeout(job.liveRetryTimer); job.liveRetryTimer = null; }
       clearGridLivePreview(job);
       if (job.tile && job.onFocus && typeof job.tile.removeEventListener === 'function') job.tile.removeEventListener('focus', job.onFocus);
       if (job.tile && job.onBlur && typeof job.tile.removeEventListener === 'function') job.tile.removeEventListener('blur', job.onBlur);
-      job.image.onload = null;
-      job.image.onerror = null;
-      job.image.removeAttribute('src');
+      hardStopImage(job.loader);
+      job.loader = null;
+      if (job.image) hardStopImage(job.image);
     }
     state.gridJobs = [];
     state.gridSnapshotQueue = [];
     state.gridSnapshotBusy = false;
+    state.activeGridSnapshotJob = null;
   }
 
-  function startGridSnapshot(image, profile, delay, statusNode, tile) {
+  function startGridSnapshot(image, profile, cacheDelay, freshDelay, statusNode, tile) {
     var job = {
       image: image,
       profile: profile,
       tile: tile,
+      statusNode: statusNode,
       timer: null,
+      cacheTimer: null,
       focusTimer: null,
       liveImage: null,
       liveBadge: null,
       liveRetryTimer: null,
+      loader: null,
+      loadingKind: null,
       onFocus: null,
       onBlur: null,
       stopped: false,
       failures: 0,
       requestStartedAt: 0,
-      snapshotQueued: false
+      snapshotQueued: false,
+      cacheQueued: false,
+      hasSnapshot: false
     };
     state.gridJobs.push(job);
-    function schedule(wait) {
-      if (!job.stopped && !state.suspended) queueGridSnapshot(job, wait);
-    }
+
     function scheduleLivePreview(wait) {
       if (job.focusTimer) root.clearTimeout(job.focusTimer);
       job.focusTimer = root.setTimeout(startLivePreview, wait);
     }
+
     function startLivePreview() {
       job.focusTimer = null;
       if (job.stopped || state.suspended || state.view !== 'grid' || root.document.activeElement !== tile) return;
       if (state.activeGridLiveJob && state.activeGridLiveJob !== job) clearGridLivePreview(state.activeGridLiveJob);
-      clearGridLivePreview(job);
+      if (job.liveImage) clearGridLivePreview(job);
+      abortActiveGridSnapshot(true);
+      stopLegacyScreenGuard();
       state.activeGridLiveJob = job;
       statusNode.textContent = '';
       statusNode.classList.remove('offline');
+
       var liveImage = root.document.createElement('img');
       var liveBadge = root.document.createElement('span');
       liveImage.alt = '';
@@ -874,6 +984,7 @@
       job.liveImage = liveImage;
       job.liveBadge = liveBadge;
       tile.classList.add('is-live');
+
       liveImage.onerror = function () {
         if (job.liveImage !== liveImage) return;
         clearGridLivePreview(job);
@@ -887,6 +998,7 @@
       };
       liveImage.src = buildUrl(profile, 'mjpeg');
     }
+
     job.onFocus = function () {
       if (job.liveRetryTimer) { root.clearTimeout(job.liveRetryTimer); job.liveRetryTimer = null; }
       scheduleLivePreview(GRID_LIVE_FOCUS_DELAY_MS);
@@ -897,23 +1009,9 @@
     };
     tile.addEventListener('focus', job.onFocus);
     tile.addEventListener('blur', job.onBlur);
-    image.onload = function () {
-      job.failures = 0;
-      statusNode.textContent = '';
-      statusNode.classList.remove('offline');
-      state.gridSnapshotBusy = false;
-      schedule(previewRefreshDelay(DEFAULT_PREVIEW_INTERVAL_SECONDS, job.requestStartedAt, Date.now()));
-      root.setTimeout(pumpGridSnapshotQueue, 80);
-    };
-    image.onerror = function () {
-      job.failures += 1;
-      statusNode.textContent = 'nincs előnézet';
-      statusNode.classList.add('offline');
-      state.gridSnapshotBusy = false;
-      schedule(DEFAULT_PREVIEW_INTERVAL_SECONDS * 1000);
-      root.setTimeout(pumpGridSnapshotQueue, 80);
-    };
-    schedule(delay);
+
+    scheduleGridSnapshot(job, 'cache', cacheDelay);
+    scheduleGridSnapshot(job, 'fresh', freshDelay);
   }
 
   function applyGridGeometry(layoutSize) {
@@ -1003,7 +1101,14 @@
         cell.appendChild(tile);
         cell.appendChild(featureButton);
         ui.cameraGrid.appendChild(cell);
-        startGridSnapshot(image, profile, index * 1000, status, tile);
+        startGridSnapshot(
+          image,
+          profile,
+          index * GRID_CACHE_WARM_STAGGER_MS,
+          1000 + index * GRID_SNAPSHOT_STAGGER_MS,
+          status,
+          tile
+        );
       }(layout.items[i], i));
     }
     startScreenGuard();
@@ -1026,8 +1131,10 @@
     if (!job) return;
     if (job.timer) root.clearTimeout(job.timer);
     if (job.refreshTimer) root.clearTimeout(job.refreshTimer);
+    if (job.handoffTimer) root.clearTimeout(job.handoffTimer);
     job.timer = null;
     job.refreshTimer = null;
+    job.handoffTimer = null;
     if (job.messageHandler && root.removeEventListener) root.removeEventListener('message', job.messageHandler);
     job.messageHandler = null;
     if (job.node) {
@@ -1036,9 +1143,12 @@
       if (job.node.tagName === 'IFRAME') {
         try {
           if (job.node.contentWindow) job.node.contentWindow.postMessage({ channel: 'hu.szabi.cameraviewer.player', type: 'stop', session: job.session }, '*');
-        } catch (error) { /* iframe removal is the hard stop */ }
+        } catch (error) { /* iframe replacement below is the hard stop */ }
+        try { job.node.src = 'about:blank'; } catch (blankError) { /* best effort */ }
+        job.node.removeAttribute('src');
+      } else {
+        hardStopImage(job.node);
       }
-      job.node.removeAttribute('src');
     }
     job.node = null;
     if (ui.viewerAudio) ui.viewerAudio.classList.add('hidden');
@@ -1062,8 +1172,8 @@
     ui.viewerMode.classList.toggle('hidden', !canUseVideo);
     if (!canUseVideo) return;
     var usingVideo = state.fullscreenTransport === 'webrtc';
-    ui.viewerMode.textContent = usingVideo ? '▦ MJPEG' : '▶ Valódi videó';
-    ui.viewerMode.setAttribute('aria-label', usingVideo ? 'Átváltás MJPEG képre' : 'Átváltás valódi videóra');
+    ui.viewerMode.textContent = usingVideo ? '▦ MJPEG' : '▶ Videó';
+    ui.viewerMode.setAttribute('aria-label', usingVideo ? 'Átváltás MJPEG képre' : 'Átváltás videóra');
   }
 
   function saveFullscreenTransport(value) {
@@ -1180,24 +1290,23 @@
     var image = root.document.createElement('img');
     job.node = image;
     ui.viewerAudio.classList.add('hidden');
-    startScreenGuard();
+    stopLegacyScreenGuard();
     image.alt = job.profile.name;
     image.className = 'viewer-media';
-    setViewerStatus(job, 'MJPEG', 'MJPEG fallback indítása…', false);
+    setViewerStatus(job, 'MJPEG', 'MJPEG indítása…', false);
     image.onload = function () {
       if (!currentJob(job)) return;
-      if (job.timer) root.clearTimeout(job.timer);
-      job.timer = null;
       setViewerStatus(job, 'MJPEG', '', false);
     };
     image.onerror = function () {
       advancePlayer(job, 'Az MJPEG nem érhető el, váltás snapshotra…');
     };
     ui.viewerStage.appendChild(image);
+    // A multipart MJPEG <img> nem garantál megbízható onload eseményt az első
+    // képkockánál. Nem időzítjük ki 9 másodperc után: az korábban egy működő
+    // streamet is snapshot fallbackra dobhatott, ami 10 másodperc körüli
+    // ugrásoknak látszott a TV-n.
     image.src = cacheBusted(buildUrl(job.profile, 'mjpeg'));
-    job.timer = root.setTimeout(function () {
-      advancePlayer(job, 'Az MJPEG nem adott képet, váltás snapshotra…');
-    }, MJPEG_TIMEOUT);
   }
 
   function startSnapshot(job) {
@@ -1219,7 +1328,7 @@
     image.onload = function () {
       failures = 0;
       setViewerStatus(job, 'Snapshot', '', false);
-      schedule(1200);
+      schedule(3000);
     };
     image.onerror = function () {
       failures += 1;
@@ -1245,6 +1354,7 @@
     else if (closeAppOnExit === false) state.viewerClosesApp = false;
     stopGridJobs();
     stopActivePlayer();
+    stopLegacyScreenGuard();
     state.view = 'viewer';
     state.selectedId = profile.id;
     ui.gridScreen.classList.add('hidden');
@@ -1262,6 +1372,7 @@
       transportIndex: 0,
       timer: null,
       refreshTimer: null,
+      handoffTimer: null,
       node: null,
       messageHandler: null,
       session: null
@@ -1269,7 +1380,10 @@
     };
     state.activeJob = job;
     updateViewerTransportToggle(profile);
-    startTransport(job);
+    job.handoffTimer = root.setTimeout(function () {
+      job.handoffTimer = null;
+      if (currentJob(job)) startTransport(job);
+    }, FULLSCREEN_HANDOFF_DELAY_MS);
     ui.viewerScreen.focus();
   }
 
@@ -1571,6 +1685,43 @@
     return state.settings.layoutSize;
   }
 
+  function tileCenter(tile) {
+    var rect = tile.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  }
+
+  function directionalTileScore(from, to, keyCode) {
+    var dx = to.x - from.x;
+    var dy = to.y - from.y;
+    var primary;
+    var secondary;
+
+    if (keyCode === 37) {
+      if (dx >= -2) return null;
+      primary = -dx;
+      secondary = Math.abs(dy);
+    } else if (keyCode === 39) {
+      if (dx <= 2) return null;
+      primary = dx;
+      secondary = Math.abs(dy);
+    } else if (keyCode === 38) {
+      if (dy >= -2) return null;
+      primary = -dy;
+      secondary = Math.abs(dx);
+    } else {
+      if (dy <= 2) return null;
+      primary = dy;
+      secondary = Math.abs(dx);
+    }
+
+    // A másodlagos tengely eltérését erősen büntetjük, így a 2×2-es kiemelt
+    // csempéről is a vizuálisan mellette/fölötte lévő kamera kap fókuszt.
+    return primary + secondary * 1.6;
+  }
+
   function moveGridFocus(keyCode) {
     var tiles = Array.prototype.slice.call(ui.cameraGrid.querySelectorAll('.camera-tile'));
     if (!tiles.length) return;
@@ -1579,21 +1730,25 @@
       tiles[0].focus();
       return;
     }
-    var columns = gridColumnCount();
-    var next = index;
-    if (keyCode === 37 && index === 0 && state.page > 0) {
-      changePage(-1);
+
+    var from = tileCenter(tiles[index]);
+    var bestTile = null;
+    var bestScore = Infinity;
+    for (var candidateIndex = 0; candidateIndex < tiles.length; candidateIndex += 1) {
+      if (candidateIndex === index) continue;
+      var score = directionalTileScore(from, tileCenter(tiles[candidateIndex]), keyCode);
+      if (score !== null && score < bestScore) {
+        bestScore = score;
+        bestTile = tiles[candidateIndex];
+      }
+    }
+
+    if (bestTile) {
+      bestTile.focus();
       return;
     }
-    if (keyCode === 39 && index === tiles.length - 1 && state.page < state.pageCount - 1) {
-      changePage(1);
-      return;
-    }
-    if (keyCode === 37 && index % columns > 0) next = index - 1;
-    if (keyCode === 39 && index % columns < columns - 1 && index + 1 < tiles.length) next = index + 1;
-    if (keyCode === 38 && index - columns >= 0) next = index - columns;
-    if (keyCode === 40 && index + columns < tiles.length) next = index + columns;
-    tiles[next].focus();
+    if (keyCode === 37 && state.page > 0) changePage(-1);
+    else if (keyCode === 39 && state.page < state.pageCount - 1) changePage(1);
   }
 
   function moveSettingsFocus(direction) {
