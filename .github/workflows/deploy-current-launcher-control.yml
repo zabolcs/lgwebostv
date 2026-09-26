@@ -27,6 +27,14 @@ jobs:
           persist-credentials: false
           clean: false
 
+      - name: Isolated Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install SSH client library
+        run: python3 -m pip install --disable-pip-version-check --quiet paramiko
+
 
       - name: Deploy NAS control UI through Proxmox
         env:
