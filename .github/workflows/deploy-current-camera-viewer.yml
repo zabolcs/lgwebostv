@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# stable deploy v2
+
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64]
