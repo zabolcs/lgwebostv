@@ -70,7 +70,7 @@ jobs:
           done
 
           "${SSH[@]}" "grep -q 'beginResumeLoading' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
-          "${SSH[@]}" "grep -q 'Long Back generates repeat events' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
+          "${SSH[@]}" "grep -q 'long Back generates repeat events' /media/developer/apps/usr/palm/applications/hu.szabi.launcher/launcher-runtime.js"
           "${SSH[@]}" "grep -q 'guard v0.5.3 started' '$STAGE/guard.sh'"
 
           # Switch only the background guard. The handoff marker prevents the
