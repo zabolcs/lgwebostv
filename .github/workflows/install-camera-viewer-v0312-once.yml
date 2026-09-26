@@ -1,4 +1,4 @@
-name: Install camera viewer 0.3.15 once
+name: Install camera viewer 0.3.16 once
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
           node apps/camera-viewer/tests/camera-viewer.test.js
           node apps/camera-viewer/tests/webos-player.test.js
           python3 scripts/build-all.py
-          test -f build/hu.szabi.cameraviewer_0.3.15_all.ipk
+          test -f build/hu.szabi.cameraviewer_0.3.16_all.ipk
 
       - name: Install while camera app is stopped
         shell: bash
@@ -45,19 +45,28 @@ jobs:
           RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}' 2>&1" || true)"
           echo "RUNNING_APPS=$RUNNING"
           if echo "$RUNNING" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]cameraviewer"'; then
-            echo "Camera Viewer is running; refusing a live replacement." >&2
-            exit 20
+            echo "Camera Viewer is running; closing it before replacement."
+            "${SSH[@]}" "luna-send -n 1 -f -w 3000 luna://com.webos.service.applicationmanager/closeByAppId '{\"id\":\"hu.szabi.cameraviewer\"}'" || true
+            for _ in $(seq 1 20); do
+              sleep 0.25
+              RUNNING="$("${SSH[@]}" "luna-send -n 1 -f -w 1500 luna://com.webos.service.webappmanager/listRunningApps '{\"includeSysApps\":false}' 2>&1" || true)"
+              echo "$RUNNING" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]cameraviewer"' || break
+            done
+            if echo "$RUNNING" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hu[.]szabi[.]cameraviewer"'; then
+              echo "Camera Viewer did not stop; refusing replacement." >&2
+              exit 20
+            fi
           fi
 
-          STAGE="$("${SSH[@]}" "mktemp -d /tmp/camera-viewer-0315.XXXXXX")"
-          BACKUP="$("${SSH[@]}" "mktemp -d /var/lib/webosbrew/camera-viewer-0315-backup.XXXXXX")"
+          STAGE="$("${SSH[@]}" "mktemp -d /tmp/camera-viewer-0316.XXXXXX")"
+          BACKUP="$("${SSH[@]}" "mktemp -d /var/lib/webosbrew/camera-viewer-0316-backup.XXXXXX")"
           echo "ROLLBACK=$BACKUP"
           "${SSH[@]}" "tar -czf '$BACKUP/app.tgz' -C /media/developer/apps/usr/palm/applications hu.szabi.cameraviewer"
           "${SCP[@]}" scripts/install-local-on-tv.sh "root@192.168.0.240:$STAGE/install.sh"
-          "${SCP[@]}" build/hu.szabi.cameraviewer_0.3.15_all.ipk "root@192.168.0.240:$STAGE/hu.szabi.cameraviewer_0.3.15_all.ipk"
-          SHA="$(sha256sum build/hu.szabi.cameraviewer_0.3.15_all.ipk | awk '{print $1}')"
-          "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/hu.szabi.cameraviewer_0.3.15_all.ipk' '$SHA'"
-          "${SSH[@]}" "grep -Eq '\"version\"[[:space:]]*:[[:space:]]*\"0[.]3[.]15\"' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/appinfo.json"
+          "${SCP[@]}" build/hu.szabi.cameraviewer_0.3.16_all.ipk "root@192.168.0.240:$STAGE/hu.szabi.cameraviewer_0.3.16_all.ipk"
+          SHA="$(sha256sum build/hu.szabi.cameraviewer_0.3.16_all.ipk | awk '{print $1}')"
+          "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/hu.szabi.cameraviewer_0.3.16_all.ipk' '$SHA'"
+          "${SSH[@]}" "grep -Eq '\"version\"[[:space:]]*:[[:space:]]*\"0[.]3[.]16\"' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/appinfo.json"
           "${SSH[@]}" "grep -q 'FULLSCREEN_TRANSPORT_KEY' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/app.js"
           "${SSH[@]}" "grep -q 'viewer-mode' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/index.html"
-          echo "CAMERA_VIEWER_0315_INSTALL=PASS"
+          echo "CAMERA_VIEWER_0316_INSTALL=PASS"
