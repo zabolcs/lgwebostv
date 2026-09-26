@@ -115,7 +115,7 @@ OLD_SHA="$(sha256sum "$BACKUP/guard.sh" | awk '{print $1}')"
 NEW_SHA="$(sha256sum tools/generated-tv-scripts/guard.sh | awk '{print $1}')"
 echo "OLD_GUARD_SHA=$OLD_SHA"
 echo "NEW_GUARD_SHA=$NEW_SHA"
-grep -q "guard v0.5.0" tools/generated-tv-scripts/guard.sh
+grep -q "guard v0.5.1" tools/generated-tv-scripts/guard.sh
 
 "${SCP[@]}" tools/generated-tv-scripts/guard.sh "$TV:$GUARD.new"
 "${SSH[@]}" "sh -n '$GUARD.new'; chmod 755 '$GUARD.new'; mv -f '$GUARD.new' '$GUARD'"
@@ -125,7 +125,7 @@ test "$ACTUAL_SHA" = "$NEW_SHA"
 stop_guard
 start_guard
 sleep 1
-"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.5.0 started'"
+"${SSH[@]}" "tail -30 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'guard v0.5.1 started'"
 echo COVER_GUARD_DEPLOY=PASS
 
 PARK_RESULT="$(node tools/lab/park-launcher-cdp.mjs "$OVERLAY" 2>/dev/null || true)"
@@ -172,15 +172,15 @@ test "$READY" -eq 1
 "${SSH[@]}" "touch '$COVER_READY'"
 WAM_PAYLOAD_READY=0
 for i in $(seq 1 48); do
-  if "${SSH[@]}" "test -s /tmp/hu.szabi.launcher.quick-wam-cover.json"; then
+  if "${SSH[@]}" "test -s /tmp/hu.szabi.launcher.quick-wam-cover.json && test -s /tmp/hu.szabi.launcher.quick-wam-full.json"; then
     WAM_PAYLOAD_READY=1
-    echo "WAM_COVER_PAYLOAD_READY_POLL=$i"
+    echo "WAM_BOTH_PAYLOADS_READY_POLL=$i"
     break
   fi
   sleep 0.25
 done
 test "$WAM_PAYLOAD_READY" -eq 1
-echo WAM_COVER_PAYLOAD_READY=PASS
+echo WAM_COVER_AND_FULL_PAYLOAD_READY=PASS
 echo COVER_PREWARM=PASS
 
 # Establish a worst-case visible input while keeping the prewarmed popup hidden.
@@ -252,21 +252,29 @@ cover=first.get('overlay')
 full=first.get('full')
 if cover is None or full is None:
     raise SystemExit("cover/full surface timestamp missing")
-if not (0 <= cover < full):
-    raise SystemExit(f"cover was not earlier than full: cover={cover}, full={full}")
-if cover >= 1.80:
-    raise SystemExit(f"private WAM Prepare Resume cover not fast enough: {cover:.3f}s")
-if full-cover < 1.0:
-    raise SystemExit(f"cover lead too small: {full-cover:.3f}s")
-print(f"COVER_LEAD_SECONDS={full-cover:.3f}")
-print("QUICK_COVER_TIMING=PASS")
+if not (0 <= cover <= full):
+    raise SystemExit(f"cover ordering invalid: cover={cover}, full={full}")
+gap=full-cover
+if cover > 5.5:
+    raise SystemExit(f"private WAM cover too slow after wake request: {cover:.3f}s")
+if full > 6.0:
+    raise SystemExit(f"private WAM full launcher too slow after wake request: {full:.3f}s")
+if gap > 1.5:
+    raise SystemExit(f"private WAM cover-to-full gap too large: {gap:.3f}s")
+hdmi=first.get('hdmi')
+if hdmi is not None and full-hdmi > 1.5:
+    raise SystemExit(f"private WAM HDMI-to-full gap too large: {full-hdmi:.3f}s")
+print(f"COVER_TO_FULL_SECONDS={gap:.3f}")
+if hdmi is not None: print(f"HDMI_TO_FULL_SECONDS={full-hdmi:.3f}")
+print("QUICK_WAM_FULL_TIMING=PASS")
 PY
 
 echo COVER_GUARD_LOG_BEGIN
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null"
 echo COVER_GUARD_LOG_END
 "${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Prepare Resume cover accepted'"
-"${SSH[@]}" "tail -100 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick fast lane accepted'"
+"${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'private WAM Active full accepted'"
+"${SSH[@]}" "tail -120 /tmp/hu.szabi.launcher-wake.log 2>/dev/null | grep -q 'quick fast lane satisfied by private WAM full'"
 
 POST_UPTIME="$("${SSH[@]}" "cut -d' ' -f1 /proc/uptime")"
 python3 - "$PRE_UPTIME" "$POST_UPTIME" <<'PY'
