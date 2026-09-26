@@ -515,6 +515,8 @@
     view: 'grid',
     suspended: false,
     gridJobs: [],
+    gridSnapshotQueue: [],
+    gridSnapshotBusy: false,
     activeGridLiveJob: null,
     activeJob: null,
     generation: 0,
@@ -767,7 +769,10 @@
     job.liveImage = null;
     job.liveBadge = null;
     if (job.tile) job.tile.classList.remove('is-live');
-    if (state.activeGridLiveJob === job) state.activeGridLiveJob = null;
+    if (state.activeGridLiveJob === job) {
+      state.activeGridLiveJob = null;
+      root.setTimeout(pumpGridSnapshotQueue, 80);
+    }
     if (liveBadge && liveBadge.parentNode) liveBadge.parentNode.removeChild(liveBadge);
     if (liveImage) {
       liveImage.style.display = 'none';
@@ -778,6 +783,32 @@
         if (liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
       }, 0);
     }
+  }
+
+  function pumpGridSnapshotQueue() {
+    if (state.gridSnapshotBusy || state.suspended || state.view !== 'grid' || state.activeGridLiveJob) return;
+    while (state.gridSnapshotQueue.length) {
+      var job = state.gridSnapshotQueue.shift();
+      job.snapshotQueued = false;
+      if (job.stopped || !job.image || !root.document.documentElement.contains(job.image)) continue;
+      state.gridSnapshotBusy = true;
+      job.requestStartedAt = Date.now();
+      job.image.src = cacheBusted(buildUrl(job.profile, 'snapshot'));
+      return;
+    }
+  }
+
+  function queueGridSnapshot(job, wait) {
+    if (job.timer) root.clearTimeout(job.timer);
+    job.timer = root.setTimeout(function () {
+      job.timer = null;
+      if (job.stopped || state.suspended || state.view !== 'grid') return;
+      if (!job.snapshotQueued) {
+        job.snapshotQueued = true;
+        state.gridSnapshotQueue.push(job);
+      }
+      pumpGridSnapshotQueue();
+    }, wait);
   }
 
   function stopGridJobs() {
@@ -794,11 +825,14 @@
       job.image.removeAttribute('src');
     }
     state.gridJobs = [];
+    state.gridSnapshotQueue = [];
+    state.gridSnapshotBusy = false;
   }
 
   function startGridSnapshot(image, profile, delay, statusNode, tile) {
     var job = {
       image: image,
+      profile: profile,
       tile: tile,
       timer: null,
       focusTimer: null,
@@ -809,20 +843,12 @@
       onBlur: null,
       stopped: false,
       failures: 0,
-      requestStartedAt: 0
+      requestStartedAt: 0,
+      snapshotQueued: false
     };
     state.gridJobs.push(job);
     function schedule(wait) {
-      if (!job.stopped && !state.suspended) job.timer = root.setTimeout(refresh, wait);
-    }
-    function refresh() {
-      if (job.stopped || state.suspended || state.view !== 'grid') return;
-      if (state.activeGridLiveJob) {
-        schedule(DEFAULT_PREVIEW_INTERVAL_SECONDS * 1000);
-        return;
-      }
-      job.requestStartedAt = Date.now();
-      image.src = cacheBusted(buildUrl(profile, 'snapshot'));
+      if (!job.stopped && !state.suspended) queueGridSnapshot(job, wait);
     }
     function scheduleLivePreview(wait) {
       if (job.focusTimer) root.clearTimeout(job.focusTimer);
@@ -875,13 +901,17 @@
       job.failures = 0;
       statusNode.textContent = '';
       statusNode.classList.remove('offline');
+      state.gridSnapshotBusy = false;
       schedule(previewRefreshDelay(DEFAULT_PREVIEW_INTERVAL_SECONDS, job.requestStartedAt, Date.now()));
+      root.setTimeout(pumpGridSnapshotQueue, 80);
     };
     image.onerror = function () {
       job.failures += 1;
       statusNode.textContent = 'nincs előnézet';
       statusNode.classList.add('offline');
+      state.gridSnapshotBusy = false;
       schedule(DEFAULT_PREVIEW_INTERVAL_SECONDS * 1000);
+      root.setTimeout(pumpGridSnapshotQueue, 80);
     };
     schedule(delay);
   }
