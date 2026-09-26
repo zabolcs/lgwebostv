@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# retry: wait for stable Active WAM
+
 jobs:
   probe:
     runs-on: [self-hosted, Linux, X64]
