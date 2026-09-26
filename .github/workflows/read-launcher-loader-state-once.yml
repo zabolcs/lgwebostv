@@ -1,0 +1,24 @@
+name: Read launcher loader state once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/read-launcher-loader-state-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Read launcher DOM state
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/lab/launcher-timing-read.mjs 'JSON.stringify({hidden:document.hidden,activated:window.PalmSystem&&window.PalmSystem.isActivated,bootHidden:(function(){var x=document.getElementById("launcher-boot");return x?x.hidden:null})(),bootClass:(function(){var x=document.getElementById("launcher-boot");return x?x.className:null})(),bodyClass:document.body.className})'
