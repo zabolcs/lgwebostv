@@ -1,0 +1,66 @@
+name: Recover TV after WAM probes once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/recover-tv-after-wam-probes-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 4
+    steps:
+      - name: Power on and verify protected baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAS_API=http://192.168.0.223:8765
+          TV_HOST=192.168.0.240
+          EXPECTED_SHA=52cb0ec94e475d3478916d4af781566e31636bb91042dac1a4218efc043f7e97
+
+          python3 - "$NAS_API/api/tv/power" <<'PY'
+          import sys,urllib.request
+          req=urllib.request.Request(sys.argv[1],data=b'{"state":"on"}',headers={"Content-Type":"application/json"})
+          with urllib.request.urlopen(req,timeout=20) as r:
+              print("POWER_ON_RESPONSE="+r.read().decode())
+          PY
+
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          cp /media/lgtv/id_rsa "$TMP/id_rsa"
+          chmod 600 "$TMP/id_rsa"
+
+          READY=0
+          for i in $(seq 1 60); do
+            if ssh-keyscan -T 1 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null && [ -s "$TMP/known_hosts" ]; then
+              READY=1
+              echo "SSH_READY_HALFSECONDS=$i"
+              break
+            fi
+            sleep 0.5
+          done
+          test "$READY" -eq 1
+
+          SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" root@"$TV_HOST")
+          SHA_LINE="$("${SSH[@]}" "sha256sum /var/lib/webosbrew/launcher-home/guard.sh")"
+          ACTUAL_SHA="${SHA_LINE%% *}"
+          echo "TV_GUARD_SHA=$ACTUAL_SHA"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+
+          if ! "${SSH[@]}" 'p=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true); case "$p" in ""|*[!0-9]*) exit 1;; esac; kill -0 "$p" 2>/dev/null'; then
+            "${SSH[@]}" "/var/lib/webosbrew/init.d/launcher-home </dev/null >/dev/null 2>&1"
+            sleep 1
+          fi
+          "${SSH[@]}" 'p=$(cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true); case "$p" in ""|*[!0-9]*) exit 1;; esac; kill -0 "$p" 2>/dev/null'
+          echo GUARD_RUNNING=PASS
+
+          "${SSH[@]}" "mountpoint -q /var/lib/eim && mountpoint -q /var/lib/webosbrew/launcher-eim/frozen-view"
+          "${SSH[@]}" "test -f /var/lib/webosbrew/launcher-eim/last-good && test ! -e /var/lib/webosbrew/launcher-eim/boot-pending && test ! -e /var/lib/webosbrew/launcher-eim/disabled-failsafe"
+          echo EIM_HEALTH=PASS
+
+          "${SSH[@]}" "luna-send -n 1 -f -w 5000 luna://com.webos.applicationManager/launch '{\"id\":\"hu.szabi.launcher\",\"params\":{\"source\":\"probe-recovery\"}}' >/dev/null 2>&1 || true"
+          echo RECOVERY=PASS
