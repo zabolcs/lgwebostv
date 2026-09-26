@@ -32,33 +32,9 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Probe direct NAS SSH
-        shell: bash
-        run: |
-          set -u
-          for user in root szszabolcs; do
-            if ssh -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=accept-new "$user@192.168.0.223" 'echo DIRECT_SSH_OK user=$(whoami); test -d /opt/lgtv-control && echo CONTROL_DIR_OK' 2>/dev/null; then
-              echo "SSH_USER=$user" >> "$GITHUB_ENV"
-              exit 0
-            fi
-          done
-          echo "No key-based direct SSH login; password secret path remains required."
-      - name: Locate legacy private helper
-        shell: bash
-        run: |
-          set -euo pipefail
-          find /media/lgtv /home/actions/lgtv-import -type f -path '*/source/previous-work-20260905/remote.py' -print 2>/dev/null | head -n 5
-          find /media/lgtv /home/actions/lgtv-import -type f -name remote.py -print 2>/dev/null | head -n 30
-      - name: Deploy NAS control UI
-        shell: bash
+      - name: Deploy NAS control UI through Proxmox
         env:
-          SSHPASS: ${{ secrets.LGTV_NAS_SSH_PASSWORD }}
+          LGTV_REMOTE_HELPER: /media/lgtv/checkpoint-20260925-20260925-092443/source/previous-work-20260905/remote.py
         run: |
           set -euo pipefail
-          command -v sshpass >/dev/null || { echo "sshpass is required on the self-hosted runner"; exit 1; }
-          sshpass -e ssh -o StrictHostKeyChecking=accept-new ${SSH_USER:-root}@192.168.0.223 'mkdir -p /var/backups/lgtv-control && cp -a /opt/lgtv-control /var/backups/lgtv-control/pre-dashboard-$(date +%Y%m%d-%H%M%S)'
-          for f in server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js; do
-            sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.223 "mkdir -p /opt/lgtv-control/$(dirname "$f")"
-            sshpass -e scp -o StrictHostKeyChecking=accept-new "remote-control/$f" "root@192.168.0.223:/opt/lgtv-control/$f"
-          done
-          sshpass -e ssh -o StrictHostKeyChecking=accept-new root@192.168.0.223 'python3 -m py_compile /opt/lgtv-control/server.py && systemctl restart lgtv-control.service && systemctl is-active lgtv-control.service && grep -q dashboard-control.js /opt/lgtv-control/static/index.html && test -s /opt/lgtv-control/static/dashboard-control.js && echo NAS_DEPLOY=PASS'
+          python3 tools/lab/deploy-native-launcher.py             server.py             static/index.html             static/power-control.js             static/launcher-admin.js             static/connections-ui.js             static/dashboard-control.js
