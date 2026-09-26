@@ -128,6 +128,44 @@ for (let i = 0; i < inventory.length; i += 1) {
 }
 console.log('FOCUS_ALL=' + JSON.stringify(allFocus));
 
+// Exercise the same keyboard path used by the physical remote.
+await evaluate(page, `(function(){var t=document.querySelectorAll('.camera-tile')[0];if(t)t.focus();return true;})()`);
+await sleep(380);
+const remoteSteps = [
+  {code:39,index:1},
+  {code:39,index:2},
+  {code:37,index:1},
+  {code:37,index:0},
+  {code:40,index:3},
+  {code:39,index:4}
+];
+const remoteNav = [];
+for (const step of remoteSteps) {
+  const started = Date.now();
+  await evaluate(page, `(function(){
+    var e=new KeyboardEvent('keydown',{bubbles:true,cancelable:true});
+    try{Object.defineProperty(e,'keyCode',{value:${step.code}});}catch(ignore){}
+    try{Object.defineProperty(e,'which',{value:${step.code}});}catch(ignore){}
+    window.dispatchEvent(e);
+    return true;
+  })()`);
+  let state = null;
+  while (Date.now() - started < 1200) {
+    state = JSON.parse(await evaluate(page, `JSON.stringify((function(){
+      var tiles=document.querySelectorAll('.camera-tile');
+      var target=tiles[${step.index}];
+      var live=target&&target.querySelector('.camera-grid-live');
+      return {active:document.activeElement===target,totalLive:document.querySelectorAll('.camera-grid-live').length,live:!!live};
+    })())`));
+    if (state.active && state.totalLive===1 && state.live) break;
+    await sleep(50);
+  }
+  state.elapsedMs = Date.now() - started;
+  remoteNav.push(state);
+  if (!state.active || state.totalLive !== 1 || !state.live || state.elapsedMs > 1100) throw new Error('REMOTE_NAV_FAIL_' + step.index);
+}
+console.log('REMOTE_NAV=' + JSON.stringify(remoteNav));
+
 const first = await focusAndMeasure(0);
 console.log('FOCUS_1=' + JSON.stringify(first));
 if (!first.active || first.totalLive !== 1 || !first.liveUrl || first.badge !== 'LIVE' || first.oldLiveLabel) throw new Error('FIRST_FOCUS_LIVE_FAIL');
