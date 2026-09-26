@@ -72,7 +72,7 @@ jobs:
 
           # Switch only the background guard. The handoff marker prevents the
           # current Active session from being treated as a fresh wake.
-          "${SSH[@]}" "touch /tmp/hu.szabi.launcher.install-handoff && install -o root -g root -m 755 '$STAGE/guard.sh' /var/lib/webosbrew/launcher-home/guard.sh"
+          "${SSH[@]}" "touch /tmp/hu.szabi.launcher.install-handoff && cp '$STAGE/guard.sh' /var/lib/webosbrew/launcher-home/guard.sh && chmod 755 /var/lib/webosbrew/launcher-home/guard.sh"
           OLD_PID="$("${SSH[@]}" "cat /tmp/hu.szabi.launcher-home.pid 2>/dev/null || true")"
           case "$OLD_PID" in ''|*[!0-9]*) ;; *) "${SSH[@]}" "kill -TERM '$OLD_PID' 2>/dev/null || true";; esac
           "${SSH[@]}" "i=0; while [ -e /tmp/hu.szabi.launcher-home.pid ] && [ $i -lt 40 ]; do /bin/usleep 100000; i=$((i+1)); done; nohup /var/lib/webosbrew/launcher-home/guard.sh </dev/null >>/tmp/hu.szabi.launcher-home.log 2>&1 &"
