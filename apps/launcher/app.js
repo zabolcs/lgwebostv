@@ -190,7 +190,9 @@
   function localLaunch(body) {
     var action;
     if (body.type === 'app') action = lunaLaunch(body.targetId, {});
-    else if (body.type === 'link') action = lunaLaunch('com.webos.app.browser', { target: body.targetId });
+    else if (body.type === 'link' && body.linkMode === 'webhook') {
+      return remoteJson('/api/launcher/launch', 'POST', body, 6500);
+    } else if (body.type === 'link') action = lunaLaunch('com.webos.app.browser', { target: body.targetId });
     else if (body.type === 'preset') {
       var preset = findPreset(body.targetId);
       if (!preset) return Promise.reject(new Error('A kamera- vagy PiP-preset nincs a TV helyi másolatában.'));
@@ -207,7 +209,7 @@
       action = lunaLaunch(OVERLAY_APP, { v: 1, action: 'show', presetId: overlayPreset.id });
     } else return Promise.reject(new Error('Ez a launcher-művelet helyben nem indítható.'));
     return action.then(function () {
-      return { ok: true, lastUsed: body.type === 'overlayPreset' ? null : recordLast(body) };
+      return { ok: true, lastUsed: body.type === 'app' || body.type === 'preset' ? recordLast(body) : null };
     });
   }
 
