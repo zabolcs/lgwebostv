@@ -69,6 +69,7 @@ assert.strictEqual(
   'http://192.168.1.10:1984/api/stream.mjpeg?src=camera_kapu_also_preview'
 );
 assert.strictEqual(core.buildUrl(profile, 'snapshot'), 'http://192.168.1.10:1984/api/frame.jpeg?src=front_preview');
+assert.strictEqual(core.buildSnapshotUrl(profile, '55s'), 'http://192.168.1.10:1984/api/frame.jpeg?src=front_preview&cache=55s');
 assert.strictEqual(core.buildPlayerUrl(profile, '0123456789abcdef0123456789abcdef'),
   'http://192.168.1.10:1985/webos-player.html#src=front_h264&session=0123456789abcdef0123456789abcdef&audio=1');
 assert.ok(/&audio=0$/.test(core.buildPlayerUrl(core.validateProfile(validProfile({ audio: false })).value, '0123456789abcdef0123456789abcdef')));
@@ -253,8 +254,10 @@ assert.ok(/DEFAULT_PREVIEW_INTERVAL_SECONDS\s*=\s*60/.test(script), 'A grid snap
 assert.ok(/gridSnapshotQueue:\s*\[\]/.test(script) && /gridSnapshotBusy:\s*false/.test(script), 'A grid snapshotok közös soros queue-t használjanak.');
 assert.ok(/function pumpGridSnapshotQueue\(\)/.test(script) && /state\.gridSnapshotBusy = true/.test(script), 'Egyszerre legfeljebb egy snapshot töltődjön.');
 assert.ok(/function pumpGridSnapshotQueue\(\)[\s\S]*?state\.activeGridLiveJob\) return;/.test(script), 'A snapshot queue álljon meg, amíg élő kamera fut.');
-assert.ok(/startGridSnapshot\(image, profile, index \* 1000/.test(script), 'A kezdeti snapshotok legyenek széthúzva a WAM terhelés csökkentésére.');
-assert.ok(/liveImage\.style\.display = 'none';[\s\S]*?setTimeout\(function \(\) \{[\s\S]*?removeAttribute\('src'\)/.test(script), 'A live stream bontása ne blokkolja a fókuszváltást.');
+assert.ok(/GRID_SNAPSHOT_STAGGER_MS\s*=\s*9000/.test(script), 'A friss snapshotok kameránként 9 másodperces fáziseltolással induljanak.');
+assert.ok(/GRID_CACHE_WARM_STAGGER_MS\s*=\s*150/.test(script), 'A cache-bemelegítés is sorosan, kis eltéréssel induljon.');
+assert.ok(/SNAPSHOT_CACHE_MAX_AGE\s*=\s*'24h'/.test(script) && /SNAPSHOT_REFRESH_CACHE_MAX_AGE\s*=\s*'55s'/.test(script), 'Induláskor cache-elt kép, percenként pedig friss snapshot legyen.');
+assert.ok(/function hardStopImage\(image\)/.test(script) && /image\.src = EMPTY_IMAGE_SRC/.test(script), 'Az MJPEG és snapshot kapcsolatok hard-stopot kapjanak.');
 assert.strictEqual(/id="preview-interval-seconds"/.test(html), false, 'A percenkénti snapshot frissítés ne legyen külön állítható.');
 assert.ok(/FLOATING_MESSAGE_TIMEOUT\s*=\s*5000/.test(script));
 assert.ok(/\.camera-grid\s*\{[\s\S]*?height:\s*100%/.test(css));
@@ -270,10 +273,15 @@ assert.ok(/\.camera-feature\.is-featured::after/.test(css));
 assert.ok(/\.camera-tile:focus\s*\{[\s\S]*?outline:\s*0;/.test(css), 'A kijelölt kamerán ne legyen fehér szögletes outline.');
 assert.ok(/\.camera-tile:focus\s*\{[\s\S]*?border-color:\s*rgba\(117, 216, 255/.test(css), 'A fókusz kapjon finom kékes lekerekített kiemelést.');
 assert.ok(/buildUrl\(profile, 'mjpeg'\)/.test(script), 'A kijelölt grid kamera MJPEG-re váltson.');
-assert.ok(/GRID_LIVE_FOCUS_DELAY_MS\s*=\s*600/.test(script), 'A fókusz stabilizálása után induljon az egyetlen MJPEG stream.');
+assert.ok(/GRID_LIVE_FOCUS_DELAY_MS\s*=\s*800/.test(script), 'Gyors navigálás közben ne induljon minden átlépett csempén MJPEG stream.');
 assert.ok(/addEventListener\('blur', job\.onBlur\)/.test(script), 'Fókuszvesztéskor álljon le a grid MJPEG stream.');
 assert.ok(/GRID_LIVE_RETRY_DELAY_MS\s*=\s*1800/.test(script) && /liveImage\.onerror[\s\S]*?scheduleLivePreview\(0\)/.test(script), 'Transient MJPEG hiba esetén a kijelölt kamera próbálja újra az élő streamet.');
 assert.ok(/camera-grid-live-badge/.test(script + css), 'A grid MJPEG kapjon látható LIVE jelzést.');
+assert.ok(/camera-grid-live-badge::before[\s\S]*?margin-right:\s*7px/.test(css), 'A LIVE piros pontja ne lógjon bele a feliratba.');
+assert.ok(/function directionalTileScore\(from, to, keyCode\)/.test(script) && /getBoundingClientRect\(\)/.test(script), 'A kiemelt 2×2 kamera navigációja vizuális geometriát használjon.');
+assert.ok(/FULLSCREEN_HANDOFF_DELAY_MS\s*=\s*160/.test(script), 'Fullscreen előtt legyen rövid decoder-handoff.');
+assert.strictEqual(/MJPEG_TIMEOUT/.test(script), false, 'A folyamatos MJPEG-et nem szabad onload alapú 9 mp-es timeouttal megszakítani.');
+assert.ok(/▶ Videó/.test(script) && !/Valódi videó/.test(script), 'A módváltó felirata egyszerűen Videó legyen.');
 assert.ok(/status\.textContent = ''/.test(script), 'Ne maradjon régi élő/kapcsolódás státusz a LIVE badge alatt.');
 assert.ok(/right:\s*9px;[\s\S]*?bottom:\s*9px/.test(css), 'A LIVE jelzés a kamera jobb alsó sarkában legyen.');
 assert.ok(/\.camera-tile\.is-live \.tile-state\{display:none!important\}/.test(css), 'LIVE közben a régi grid státusz ne takarja a LIVE jelzést.');
