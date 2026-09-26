@@ -1,15 +1,6 @@
 name: Deploy long Back launcher fix
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - '.github/workflows/deploy-long-back-fix.yml'
-      - 'remote-broker/remote-broker.c'
-      - 'remote-control/server.py'
-      - 'remote-control/tests/test_server.py'
-      - 'tools/generated-tv-scripts/home-key.sh'
-      - 'tools/lab/deploy-long-back-fix.py'
   workflow_dispatch:
 
 permissions:
