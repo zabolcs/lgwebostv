@@ -23,4 +23,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node tools/lab/launcher-timing-read.mjs 'JSON.stringify({hidden:document.hidden,activated:window.PalmSystem&&window.PalmSystem.isActivated,bootHidden:(function(){var x=document.getElementById("launcher-boot");return x?x.hidden:null})(),bootClass:(function(){var x=document.getElementById("launcher-boot");return x?x.className:null})(),bodyClass:document.body.className})'
+          node tools/lab/launcher-timing-read.mjs '(function(){var x=document.getElementById("launcher-boot");if(x){x.hidden=true;x.style.setProperty("display","none","important");}document.body.classList.remove("launcher-loading-active");return JSON.stringify({hidden:document.hidden,activated:window.PalmSystem&&window.PalmSystem.isActivated,bootHidden:x?x.hidden:null,bootDisplay:x?getComputedStyle(x).display:null,bodyClass:document.body.className});})()'
