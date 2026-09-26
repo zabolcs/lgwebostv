@@ -1,6 +1,7 @@
 """Deploy the protected long-Back broker fix to the TV with rollback."""
 from pathlib import Path
 import hashlib
+import os
 import shlex
 import subprocess
 import tempfile
