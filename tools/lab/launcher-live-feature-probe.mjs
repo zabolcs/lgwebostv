@@ -1,6 +1,7 @@
-const pages = await (await fetch('http://192.168.0.240:9998/json')).json();
-const candidates = pages.filter(p => String(p.url || '').includes('/hu.szabi.launcher/'));
-if (!candidates.length) throw new Error('No full launcher CDP page');
+async function launcherPages() {
+  const pages = await (await fetch('http://192.168.0.240:9998/json')).json();
+  return pages.filter(p => String(p.url || '').includes('/hu.szabi.launcher/'));
+}
 
 async function evaluate(page, expression) {
   const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -25,13 +26,29 @@ async function evaluate(page, expression) {
   });
 }
 
-let page = null;
-for (const candidate of candidates) {
-  try {
-    const visible = await evaluate(candidate, 'JSON.stringify({hidden:document.hidden,activated:!!(window.PalmSystem&&window.PalmSystem.isActivated)})');
-    const state = JSON.parse(visible);
-    if (!state.hidden && state.activated) { page = candidate; break; }
-  } catch {}
+async function activeLauncherPage() {
+  for (const candidate of await launcherPages()) {
+    try {
+      const visible = await evaluate(candidate, 'JSON.stringify({hidden:document.hidden,activated:!!(window.PalmSystem&&window.PalmSystem.isActivated)})');
+      const state = JSON.parse(visible);
+      if (!state.hidden && state.activated) return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+let page = await activeLauncherPage();
+if (!page) {
+  const response = await fetch('http://192.168.0.223:8765/api/launcher/launch', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({type:'app', targetId:'hu.szabi.launcher', label:'Launcher probe'})
+  });
+  if (!response.ok) throw new Error('LAUNCHER_FOREGROUND_REQUEST=' + response.status);
+  for (let i = 0; i < 24 && !page; i += 1) {
+    await new Promise(resolve => setTimeout(resolve, 250));
+    page = await activeLauncherPage();
+  }
 }
 if (!page) throw new Error('NO_ACTIVE_FULL_LAUNCHER');
 
