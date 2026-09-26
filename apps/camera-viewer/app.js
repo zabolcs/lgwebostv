@@ -5,6 +5,7 @@
   var LEGACY_STORAGE_KEY = 'hu.szabi.cameraviewer.profiles.v1';
   var CONFIG_KEY = 'hu.szabi.cameraviewer.config.v3';
   var SYNC_URL_KEY = 'hu.szabi.cameraviewer.sync-url.v1';
+  var FULLSCREEN_TRANSPORT_KEY = 'hu.szabi.cameraviewer.fullscreen-transport.v1';
   var FORBIDDEN_HOST = '192.168.0.100';
   var SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/;
   var CAMERA_ID = /^[a-z0-9][a-z0-9._-]{0,31}$/;
@@ -441,10 +442,11 @@
     return { ok: true, value: common };
   }
 
-  function playbackPlan(profile) {
-    var plan = [];
-    if (profile && profile.playerPath) plan.push('webrtc');
-    plan.push('mjpeg');
+  function playbackPlan(profile, preferredTransport) {
+    var hasVideo = !!(profile && profile.playerPath);
+    var preferred = preferredTransport === 'webrtc' && hasVideo ? 'webrtc' : 'mjpeg';
+    var plan = [preferred];
+    if (hasVideo) plan.push(preferred === 'webrtc' ? 'mjpeg' : 'webrtc');
     plan.push('snapshot');
     return plan;
   }
@@ -462,6 +464,7 @@
     MAX_PROFILES: null,
     CONFIG_KEY: CONFIG_KEY,
     SYNC_URL_KEY: SYNC_URL_KEY,
+    FULLSCREEN_TRANSPORT_KEY: FULLSCREEN_TRANSPORT_KEY,
     FORBIDDEN_HOST: FORBIDDEN_HOST,
     DEFAULT_PROFILES: DEFAULT_PROFILES,
     CANONICAL_PROFILE_ALIASES: CANONICAL_PROFILE_ALIASES,
@@ -512,7 +515,8 @@
     lastCommandAt: 0,
     pendingLaunchId: null,
     pendingLaunchClosesApp: false,
-    viewerClosesApp: false
+    viewerClosesApp: false,
+    fullscreenTransport: 'mjpeg'
   };
   var ui = {};
   var screenSaverSubscriptionBridge = null;
@@ -924,6 +928,29 @@
     ui.viewerStage.textContent = '';
   }
 
+  function updateViewerTransportToggle(profile) {
+    if (!ui.viewerMode) return;
+    var canUseVideo = !!(profile && profile.playerPath);
+    ui.viewerMode.classList.toggle('hidden', !canUseVideo);
+    if (!canUseVideo) return;
+    var usingVideo = state.fullscreenTransport === 'webrtc';
+    ui.viewerMode.textContent = usingVideo ? '▦ MJPEG' : '▶ Valódi videó';
+    ui.viewerMode.setAttribute('aria-label', usingVideo ? 'Átváltás MJPEG képre' : 'Átváltás valódi videóra');
+  }
+
+  function saveFullscreenTransport(value) {
+    state.fullscreenTransport = value === 'webrtc' ? 'webrtc' : 'mjpeg';
+    try { root.localStorage.setItem(FULLSCREEN_TRANSPORT_KEY, state.fullscreenTransport); } catch (error) {}
+  }
+
+  function toggleViewerTransport() {
+    var job = state.activeJob;
+    if (!currentJob(job) || !job.profile || !job.profile.playerPath) return;
+    saveFullscreenTransport(state.fullscreenTransport === 'webrtc' ? 'mjpeg' : 'webrtc');
+    updateViewerTransportToggle(job.profile);
+    openViewer(job.profile, state.viewerClosesApp);
+  }
+
   function toggleViewerAudio() {
     var job = state.activeJob;
     if (!currentJob(job) || !job.node || job.node.tagName !== 'IFRAME' || !job.profile.audio) return;
@@ -1103,7 +1130,7 @@
       profile: profile,
       generation: state.generation,
       stopped: false,
-      plan: playbackPlan(profile),
+      plan: playbackPlan(profile, state.fullscreenTransport),
       transportIndex: 0,
       timer: null,
       refreshTimer: null,
@@ -1113,6 +1140,7 @@
       ,audioMuted: true
     };
     state.activeJob = job;
+    updateViewerTransportToggle(profile);
     startTransport(job);
     ui.viewerScreen.focus();
   }
@@ -1539,6 +1567,7 @@
     ui.viewerStatus = byId('viewer-status');
     ui.viewerTransport = byId('viewer-transport');
     ui.viewerClose = byId('viewer-close');
+    ui.viewerMode = byId('viewer-mode');
     ui.viewerAudio = byId('viewer-audio');
     ui.screenGuard = byId('screen-guard');
     ui.cameraGrid = byId('camera-grid');
@@ -1568,6 +1597,7 @@
     ui.settingsError = byId('settings-error');
 
     ui.viewerClose.addEventListener('click', closeViewer);
+    ui.viewerMode.addEventListener('click', toggleViewerTransport);
     ui.viewerAudio.addEventListener('click', toggleViewerAudio);
     ui.pagePrevious.addEventListener('click', function () { changePage(-1); });
     ui.pageNext.addEventListener('click', function () { changePage(1); });
@@ -1603,6 +1633,9 @@
     state.profiles = loaded.profiles;
     state.settings = loaded.settings;
     try { state.syncUrl = root.localStorage.getItem(SYNC_URL_KEY) || ''; } catch (error) { state.syncUrl = ''; }
+    try {
+      state.fullscreenTransport = root.localStorage.getItem(FULLSCREEN_TRANSPORT_KEY) === 'webrtc' ? 'webrtc' : 'mjpeg';
+    } catch (error) { state.fullscreenTransport = 'mjpeg'; }
     renderGrid();
     sendPresenceHeartbeat();
     var launch = initialLaunchParams();
