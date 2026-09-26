@@ -1,16 +1,16 @@
-"""Deploy NAS control files to CT125 through the Proxmox host with rollback."""
+"""Deploy NAS control files to CT125 through the known-good private Proxmox helper."""
 from pathlib import Path
 import hashlib
+import importlib.util
+import os
 import shlex
-import subprocess
 import sys
-import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "remote-control"
-PVE = "192.168.0.120"
 CTID = "125"
-KEY = Path("/media/lgtv/id_rsa")
+DEFAULT_HELPER = Path("/media/lgtv/checkpoint-20260925-20260925-092443/source/previous-work-20260905/remote.py")
+HELPER = Path(os.environ.get("LGTV_REMOTE_HELPER", str(DEFAULT_HELPER)))
 
 FILES = (
     "server.py","lg_ssap.py","ssap_pairing.py","launcher_early.py",
@@ -20,56 +20,86 @@ FILES = (
 )
 selected = tuple(sys.argv[1:]) or FILES
 assert set(selected) <= set(FILES)
+if not HELPER.is_file():
+    raise SystemExit(f"Private Proxmox helper not found: {HELPER}")
 
-def run(args, timeout=60):
-    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, timeout=timeout, check=True)
-    return result.stdout.strip()
+spec = importlib.util.spec_from_file_location("lgtv_private_remote", HELPER)
+remote = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(remote)
 
-with tempfile.TemporaryDirectory() as tmp:
-    known = Path(tmp) / "known_hosts"
-    scan = subprocess.run(["ssh-keyscan","-T","3",PVE], stdout=subprocess.PIPE,
-                          stderr=subprocess.DEVNULL, text=True, check=True)
-    known.write_text(scan.stdout)
-    base = ["-i",str(KEY),"-o","BatchMode=yes","-o","ConnectTimeout=4",
-            "-o","StrictHostKeyChecking=yes","-o","UserKnownHostsFile="+str(known)]
-    ssh = ["ssh","-T"] + base + ["root@"+PVE]
-    scp = ["scp","-q"] + base
+def pve(conn, command, timeout=60):
+    rc, out, err = remote.run(conn, "pve", command, timeout=timeout)
+    if rc != 0:
+        raise RuntimeError(
+            f"PVE command failed rc={rc}: {command}\n"
+            f"stdout={out.decode(errors='replace')}\n"
+            f"stderr={err.decode(errors='replace')}"
+        )
+    return out.decode().strip()
 
-    def pve(command, timeout=60):
-        return run(ssh + [command], timeout)
-
-    stage = pve("mktemp -d /tmp/lgtv-native-deploy.XXXXXX")
-    backup = pve("pct exec "+CTID+" -- sh -c " + shlex.quote(
-        "mkdir -p /var/backups/lgtv-control && mktemp -d /var/backups/lgtv-control/native-launcher.XXXXXX"))
+conn = remote.connect()
+try:
+    stage = pve(conn, "mktemp -d /tmp/lgtv-native-deploy.XXXXXX")
+    backup = pve(conn, "pct exec "+CTID+" -- sh -c " + shlex.quote(
+        "mkdir -p /var/backups/lgtv-control && mktemp -d /var/backups/lgtv-control/dashboard.XXXXXX"))
     print("Rollback: "+backup, flush=True)
 
-    for relative in selected:
-        name = relative.replace("/","_")
-        local = SOURCE / relative
-        remote_stage = stage + "/" + name
-        run(scp + [str(local), "root@"+PVE+":"+remote_stage])
-        temporary = "/tmp/" + stage.rsplit("/",1)[-1] + "-" + name
-        pve("pct push "+CTID+" "+shlex.quote(remote_stage)+" "+shlex.quote(temporary))
-        destination = ("/etc/systemd/system/"+relative if relative.endswith(".service")
-                       else "/opt/lgtv-control/"+relative)
-        inner = (
-            "mkdir -p "+shlex.quote(str(Path(destination).parent))+"; "
-            "if [ -f "+shlex.quote(destination)+" ]; then cp -p "+shlex.quote(destination)+" "+shlex.quote(backup+"/"+name)+"; fi; "
-            + (("python3 -m py_compile "+shlex.quote(temporary)+"; ") if relative.endswith(".py") else "")
-            + "install -o root -g root -m 644 "+shlex.quote(temporary)+" "+shlex.quote(destination)+"; "
-            + "sha256sum "+shlex.quote(destination)
-        )
-        digest = pve("pct exec "+CTID+" -- sh -c "+shlex.quote(inner)).split()[-2]
-        assert digest == hashlib.sha256(local.read_bytes()).hexdigest(), relative
+    with conn.open_sftp() as sftp:
+        for relative in selected:
+            local = SOURCE / relative
+            name = relative.replace("/", "_")
+            remote_stage = stage + "/" + name
+            sftp.put(str(local), remote_stage)
+            temporary = "/tmp/" + stage.rsplit("/", 1)[-1] + "-" + name
+            pve(conn, "pct push "+CTID+" "+shlex.quote(remote_stage)+" "+shlex.quote(temporary))
+            destination = (
+                "/etc/systemd/system/"+relative
+                if relative.endswith(".service")
+                else "/opt/lgtv-control/"+relative
+            )
+            inner = (
+                "set -eu; mkdir -p "+shlex.quote(str(Path(destination).parent))+"; "
+                "if [ -f "+shlex.quote(destination)+" ]; then "
+                "cp -p "+shlex.quote(destination)+" "+shlex.quote(backup+"/"+name)+"; fi; "
+                + (("python3 -m py_compile "+shlex.quote(temporary)+"; ") if relative.endswith(".py") else "")
+                + "install -o root -g root -m 644 "+shlex.quote(temporary)+" "+shlex.quote(destination)+"; "
+                + "sha256sum "+shlex.quote(destination)
+            )
+            result = pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(inner))
+            digest = result.splitlines()[-1].split()[0]
+            expected = hashlib.sha256(local.read_bytes()).hexdigest()
+            if digest != expected:
+                raise RuntimeError(f"Hash mismatch for {relative}: {digest} != {expected}")
+            print(f"HASH_OK {relative} {digest}", flush=True)
 
-    pve("pct exec "+CTID+" -- systemctl daemon-reload")
+    pve(conn, "pct exec "+CTID+" -- systemctl daemon-reload")
     if "server.py" in selected:
-        state = pve("pct exec "+CTID+" -- sh -c "+shlex.quote(
-            "systemctl restart lgtv-control.service && systemctl is-active lgtv-control.service && "
+        state = pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
+            "set -eu; "
+            "systemctl restart lgtv-control.service; "
+            "systemctl is-active lgtv-control.service; "
             "curl -fsS http://127.0.0.1:8765/api/health"))
         print(state, flush=True)
+
+    if "static/index.html" in selected:
+        pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
+            "curl -fsS http://127.0.0.1:8765/ | grep -q 'dashboard-control.js'"))
+        print("SERVED_INDEX_OK", flush=True)
+
+    if "static/dashboard-control.js" in selected:
+        expected = hashlib.sha256((SOURCE/"static/dashboard-control.js").read_bytes()).hexdigest()
+        served = pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
+            "curl -fsS http://127.0.0.1:8765/assets/dashboard-control.js | sha256sum | awk '{print $1}'"))
+        if served.strip() != expected:
+            raise RuntimeError(f"Served dashboard hash mismatch: {served.strip()} != {expected}")
+        print("SERVED_DASHBOARD_OK "+served.strip(), flush=True)
+
     if "launcher_early.py" in selected:
-        pve("pct exec "+CTID+" -- sh -c "+shlex.quote(
-            "if systemctl is-active --quiet lgtv-launcher-early.service; then systemctl restart lgtv-launcher-early.service; fi"))
+        pve(conn, "pct exec "+CTID+" -- sh -c "+shlex.quote(
+            "if systemctl is-active --quiet lgtv-launcher-early.service; then "
+            "systemctl restart lgtv-launcher-early.service; fi"))
+
     print("NAS_DEPLOY=PASS", flush=True)
+finally:
+    conn.close()
