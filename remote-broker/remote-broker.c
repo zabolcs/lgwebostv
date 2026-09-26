@@ -63,6 +63,7 @@ static unsigned short output_refs[BROKER_KEY_MAX + 1];
 static uint64_t last_action_ms[BROKER_KEY_MAX + 1];
 static bool long_action_armed[BROKER_KEY_MAX + 1];
 static bool long_action_fired[BROKER_KEY_MAX + 1];
+static struct input_event long_action_down[BROKER_KEY_MAX + 1];
 
 static void on_signal(int sig) {
     (void)sig;
@@ -379,6 +380,14 @@ static int forward_event(int ufd, const struct input_event *event) {
     return 0;
 }
 
+static int forward_syn_report(int ufd, const struct input_event *basis) {
+    struct input_event sync = *basis;
+    sync.type = EV_SYN;
+    sync.code = SYN_REPORT;
+    sync.value = 0;
+    return forward_event(ufd, &sync);
+}
+
 static int process_event(const struct config *cfg, int ufd, struct input_event event) {
     if (event.type == EV_SYN && event.code == SYN_DROPPED) {
         fprintf(stderr, "input queue overflow; releasing grab instead of using incomplete key state\n");
@@ -403,31 +412,60 @@ static int process_event(const struct config *cfg, int ufd, struct input_event e
             char path[PATH_LENGTH];
             if (safe_action_file(code, path, sizeof(path)) && spawn_action(code, path)) target = -1;
         } else if (binding.kind == BIND_LONG_ACTION) {
-            /* Preserve the normal short press.  Only repeats are intercepted,
-             * so the factory/app receives the original down/up pair unchanged. */
+            /* Buffer the initial down until release/repeat decides the gesture.
+             * Short press is replayed as a normal down/up pair.  Long press is
+             * consumed entirely, so the factory shell never sees a held Back. */
             long_action_armed[code] = true;
             long_action_fired[code] = false;
+            long_action_down[code] = event;
         }
         held[code] = true;
         routed[code] = target;
+        if (binding.kind == BIND_LONG_ACTION) return 0;
         if (target < 0) return 0;
         if (output_refs[target]++ != 0) return 0; /* two keys mapped to same output */
         event.code = (unsigned short)target;
         return forward_event(ufd, &event);
     }
     int target = routed[code];
-    if (event.value == 2 && long_action_armed[code]) {
-        if (!long_action_fired[code]) {
-            char path[PATH_LENGTH];
-            if (safe_action_file(code, path, sizeof(path)) && spawn_action(code, path)) {
-                long_action_fired[code] = true;
-            } else {
-                /* Fail open: if the action is unavailable, restore the factory
-                 * repeat path instead of swallowing the platform long press. */
-                long_action_armed[code] = false;
+    if (long_action_armed[code]) {
+        if (event.value == 2) {
+            if (!long_action_fired[code]) {
+                char path[PATH_LENGTH];
+                if (safe_action_file(code, path, sizeof(path)) && spawn_action(code, path)) {
+                    long_action_fired[code] = true;
+                } else {
+                    /* Fail open from the first repeat: replay the delayed down
+                     * and then resume the original repeat/up stream. */
+                    long_action_armed[code] = false;
+                    struct input_event down = long_action_down[code];
+                    down.code = (unsigned short)target;
+                    if (output_refs[target]++ == 0) {
+                        if (forward_event(ufd, &down) != 0 || forward_syn_report(ufd, &down) != 0) return -1;
+                    }
+                }
             }
+            if (long_action_fired[code]) return 0;
+        } else if (event.value == 0) {
+            held[code] = false;
+            long_action_armed[code] = false;
+            if (long_action_fired[code]) {
+                long_action_fired[code] = false;
+                return 0;
+            }
+            /* No repeat arrived: this was a short Back.  Emit a compact normal
+             * press now, with a SYN boundary between down and up. */
+            struct input_event down = long_action_down[code];
+            down.code = (unsigned short)target;
+            if (output_refs[target]++ == 0) {
+                if (forward_event(ufd, &down) != 0 || forward_syn_report(ufd, &down) != 0) return -1;
+            }
+            if (--output_refs[target] != 0) return 0;
+            event.code = (unsigned short)target;
+            return forward_event(ufd, &event);
+        } else {
+            return 0;
         }
-        if (long_action_fired[code]) return 0;
     }
     if (event.value == 0) {
         held[code] = false;
@@ -458,6 +496,7 @@ static int release_forwarded_keys(int output) {
     memset(held, 0, sizeof(held));
     memset(long_action_armed, 0, sizeof(long_action_armed));
     memset(long_action_fired, 0, sizeof(long_action_fired));
+    memset(long_action_down, 0, sizeof(long_action_down));
     return result;
 }
 
