@@ -1,0 +1,26 @@
+name: Deploy launcher 0.3.22 once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-launcher-0322-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate current launcher
+        run: |
+          node tests/launcher-focus.test.js
+          node tests/launcher-input-lifecycle.test.js
+          python3 tests/test_launcher_packaging.py
+      - name: Deploy current launcher suite
+        run: python3 tools/lab/deploy-current-launcher.py
