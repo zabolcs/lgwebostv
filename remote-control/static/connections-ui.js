@@ -42,9 +42,8 @@
     el('player-path').value = connections.playerPath;
   }
   function createUi() {
-    var tab = document.createElement('button');
-    tab.className = 'tab'; tab.type = 'button'; tab.setAttribute('data-page', 'connections'); tab.textContent = 'Kapcsolatok';
-    document.querySelector('.tabs').appendChild(tab);
+    var tab = document.querySelector('.tab[data-page="connections"]');
+    if (!tab) { tab = document.createElement('button'); tab.className = 'tab'; tab.type = 'button'; tab.setAttribute('data-page', 'connections'); tab.textContent = 'Kapcsolatok'; document.querySelector('.tabs').appendChild(tab); }
     tab.addEventListener('click', function () { showPage('connections'); });
     var page = document.createElement('section');
     page.id = 'page-connections'; page.className = 'page'; page.hidden = true;
