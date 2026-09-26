@@ -45,15 +45,28 @@ def pve(conn, command, timeout=60):
 # Relocate the legacy Windows credential source to the private NAS checkpoint.
 if hasattr(remote, "OLD") and not Path(remote.OLD).is_file():
     candidates = []
-    preferred = Path("/media/lgtv/checkpoint-20260925-20260925-092443")
-    if preferred.exists():
-        candidates.extend(preferred.rglob("CHECKPOINT-LGTV-2026-08-31.md"))
+    search_roots = [
+        Path("/media/lgtv/checkpoint-20260925-20260925-092443"),
+        Path("/media/lgtv/checkpoint-20260919-20260919-211820"),
+    ]
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for pattern in ("*.md", "*.txt"):
+            for path in root.rglob(pattern):
+                try:
+                    text = path.read_text(encoding="utf-8", errors="ignore")
+                except OSError:
+                    continue
+                if "- SSH jelszó:" in text:
+                    candidates.append(path)
+                    break
+            if candidates:
+                break
+        if candidates:
+            break
     if not candidates:
-        root = Path("/media/lgtv")
-        if root.exists():
-            candidates.extend(root.rglob("CHECKPOINT-LGTV-2026-08-31.md"))
-    if not candidates:
-        raise SystemExit("Private credential checkpoint CHECKPOINT-LGTV-2026-08-31.md not found")
+        raise SystemExit("Private checkpoint containing the SSH credential marker was not found")
     remote.OLD = candidates[0]
     print(f"Using private credential checkpoint: {remote.OLD}", flush=True)
 
