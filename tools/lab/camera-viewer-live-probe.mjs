@@ -103,7 +103,7 @@ for (let i = 0; i < inventory.length; i += 1) {
   await evaluate(page, `(function(){var t=document.querySelectorAll('.camera-tile')[${i}];if(t)t.focus();return true;})()`);
   await sleep(90);
 }
-await sleep(420);
+await sleep(780);
 const rapid = JSON.parse(await evaluate(page, `JSON.stringify((function(){
   var tiles=document.querySelectorAll('.camera-tile');
   var last=tiles[tiles.length-1];
