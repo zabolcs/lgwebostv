@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# deploy helper
+# deploy helper v2
 
 jobs:
   deploy:
