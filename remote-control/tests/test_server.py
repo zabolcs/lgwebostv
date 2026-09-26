@@ -311,6 +311,48 @@ class ValidationTests(unittest.TestCase):
         png = server._png_from_bgrx(1, 1, b"\x01\x02\x03\x00")
         self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_launcher_webhook_link_contract(self):
+        config = server.LauncherStore._default()
+        config["rows"][2]["items"].append({
+            "id": "movie-mode", "type": "link",
+            "targetId": "http://192.168.1.20:8123/api/webhook/movie-mode",
+            "label": "Mozi mód", "visible": True, "fit": "contain",
+            "iconKey": "home-assistant", "iconUrl": "", "backgroundColor": "",
+            "linkMode": "webhook", "webhookMethod": "POST",
+            "webhookBody": '{"scene":"movie"}',
+        })
+        item = server.validate_launcher_config(config)["rows"][2]["items"][0]
+        self.assertEqual(item["linkMode"], "webhook")
+        self.assertEqual(item["webhookMethod"], "POST")
+        self.assertEqual(item["webhookBody"], '{"scene":"movie"}')
+
+        legacy = {
+            "id": "legacy-web", "type": "link", "targetId": "https://example.com",
+            "label": "Web", "visible": True, "fit": "contain",
+            "iconKey": "", "iconUrl": "", "backgroundColor": "",
+        }
+        legacy_item = server.validate_launcher_item(legacy, "links")
+        self.assertEqual(
+            (legacy_item["linkMode"], legacy_item["webhookMethod"], legacy_item["webhookBody"]),
+            ("website", "GET", ""),
+        )
+
+        launch = server.validate_launcher_launch_request({
+            "type": "link", "targetId": "http://192.168.1.20:8123/api/webhook/movie-mode",
+            "label": "Mozi mód", "linkMode": "webhook", "webhookMethod": "GET", "webhookBody": "",
+        })
+        self.assertEqual((launch["linkMode"], launch["webhookMethod"]), ("webhook", "GET"))
+
+        bad_method = dict(config["rows"][2]["items"][0], webhookMethod="DELETE")
+        with self.assertRaises(server.RequestError):
+            server.validate_launcher_item(bad_method, "links")
+        bad_get_body = dict(config["rows"][2]["items"][0], webhookMethod="GET", webhookBody="x")
+        with self.assertRaises(server.RequestError):
+            server.validate_launcher_item(bad_get_body, "links")
+        public_webhook = dict(config["rows"][2]["items"][0], targetId="https://example.com/hook")
+        with self.assertRaises(server.RequestError):
+            server.validate_launcher_item(public_webhook, "links")
+
     def test_launcher_animation_and_effect_preferences_are_independent(self):
         for animations in (False, True):
             for effects in (False, True):
@@ -1199,6 +1241,8 @@ class StaticTests(unittest.TestCase):
         self.assertIn("hu.szabi.launcher.offline-state.v1", app_source)
         self.assertIn("PalmServiceBridge", app_source)
         self.assertIn("localRequest", app_source)
+        self.assertIn("body.linkMode === 'webhook'", app_source)
+        self.assertIn("remoteJson('/api/launcher/launch', 'POST', body, 6500)", app_source)
         self.assertIn("syncFromNas", app_source)
         self.assertIn("forecast_hours=36", app_source)
         self.assertIn("typeof options.request === 'function'", source)
@@ -1209,6 +1253,9 @@ class StaticTests(unittest.TestCase):
         self.assertIn("launcher-tile-settings-form", source)
         self.assertIn("iconUrl", source)
         self.assertIn("backgroundColor", source)
+        self.assertIn("launcher-tile-link-mode", source)
+        self.assertIn("launcher-add-tile-webhook-method", source)
+        self.assertIn("webhookBody", source)
         self.assertIn("ICON_CATALOG", source)
         self.assertIn("suggestedIconKey", source)
         self.assertIn("moonlight", source)
