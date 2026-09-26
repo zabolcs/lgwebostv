@@ -1162,7 +1162,7 @@ class StaticTests(unittest.TestCase):
         self.assertNotIn("Bearer", source)
         self.assertNotIn("192.168.0.240", source)
         self.assertIn('value="dismiss"', source)
-        self.assertIn("/api/tv-key", (ROOT / "static" / "launcher-admin.js").read_text(encoding="utf-8"))
+        self.assertIn("/api/tv-key", (ROOT / "static" / "dashboard-control.js").read_text(encoding="utf-8"))
         self.assertIn("/api/media-overlay/state", source)
         self.assertIn("/api/camera-viewer/state", source)
         self.assertIn("loadCachedState()", source)
