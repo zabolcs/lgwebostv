@@ -702,9 +702,87 @@ def validate_launcher_url(value: Any) -> str:
     return text
 
 
+def validate_launcher_webhook_url(value: Any) -> str:
+    text = validate_launcher_url(value)
+    parsed = urlsplit(text)
+    validate_private_host(parsed.hostname)
+    return text
+
+
+def validate_launcher_link_options(raw: Any) -> tuple[str, str, str]:
+    if not isinstance(raw, dict):
+        raise RequestError("A launcher webes művelete érvénytelen.")
+    mode = str(raw.get("linkMode") or "website")
+    method = str(raw.get("webhookMethod") or "GET").upper()
+    body = raw.get("webhookBody", "")
+    if mode not in {"website", "webhook"}:
+        raise RequestError("A webes csempe módja Weboldal vagy Webhook lehet.")
+    if method not in {"GET", "POST"}:
+        raise RequestError("A webhook metódusa GET vagy POST lehet.")
+    if not isinstance(body, str) or len(body.encode("utf-8")) > 8192 or "\x00" in body:
+        raise RequestError("A webhook body legfeljebb 8192 bájtos szöveg lehet.")
+    if mode == "website":
+        return "website", "GET", ""
+    if method == "GET" and body:
+        raise RequestError("GET webhookhoz nem adható body.")
+    return "webhook", method, body
+
+
+def send_launcher_webhook(url: str, method: str, body: str) -> int:
+    target = validate_launcher_webhook_url(url)
+    method = method.upper()
+    payload = body.encode("utf-8") if method == "POST" else None
+    headers = {"User-Agent": "SzabiLauncher/1.0"}
+    if method == "POST":
+        content_type = "text/plain; charset=utf-8"
+        if body.strip():
+            try:
+                json.loads(body)
+            except (ValueError, TypeError):
+                pass
+            else:
+                content_type = "application/json"
+        headers["Content-Type"] = content_type
+    request = urllib.request.Request(target, data=payload, headers=headers, method=method)
+    opener = urllib.request.build_opener(NoMediaRedirectHandler())
+    try:
+        with opener.open(request, timeout=5) as response:
+            status = int(response.getcode() or 0)
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f"A webhook HTTP {error.code} választ adott.") from error
+    except urllib.error.URLError as error:
+        raise RuntimeError("A webhook nem érhető el: " + str(error.reason)[:160]) from error
+    if not 200 <= status < 300:
+        raise RuntimeError(f"A webhook HTTP {status} választ adott.")
+    return status
+
+
+def validate_launcher_launch_request(raw: Any) -> dict[str, Any]:
+    required = {"type", "targetId", "label"}
+    optional = {"linkMode", "webhookMethod", "webhookBody"}
+    if not isinstance(raw, dict) or not required.issubset(raw) or set(raw) - required - optional:
+        raise RequestError("A launcher indítási kérése érvénytelen.")
+    item_type = str(raw.get("type") or "")
+    target_id = str(raw.get("targetId") or "")
+    label = str(raw.get("label") or target_id).strip()[:64]
+    if item_type not in {"app", "preset", "link"} or not label:
+        raise RequestError("A launcher indítási kérése érvénytelen.")
+    result = {"type": item_type, "targetId": target_id, "label": label}
+    link_fields = {"linkMode", "webhookMethod", "webhookBody"}
+    if item_type == "link":
+        result["targetId"] = validate_launcher_url(target_id)
+        mode, method, body = validate_launcher_link_options(raw)
+        if mode == "webhook":
+            result["targetId"] = validate_launcher_webhook_url(target_id)
+        result.update(linkMode=mode, webhookMethod=method, webhookBody=body)
+    elif any(field in raw for field in link_fields):
+        raise RequestError("Webhook-beállítás csak webes csempéhez adható.")
+    return result
+
+
 def validate_launcher_item(raw: Any, row_id: str) -> dict[str, Any]:
     required = {"id", "type", "targetId", "label", "visible"}
-    optional = {"fit", "iconUrl", "backgroundColor", "iconKey"}
+    optional = {"fit", "iconUrl", "backgroundColor", "iconKey", "linkMode", "webhookMethod", "webhookBody"}
     if not isinstance(raw, dict) or not required.issubset(raw) or set(raw) - required - optional:
         raise RequestError("A launcher egyik csempéje érvénytelen.")
     item_id = str(raw.get("id") or "")
@@ -724,8 +802,14 @@ def validate_launcher_item(raw: Any, row_id: str) -> dict[str, Any]:
         raise RequestError("A launcher alkalmazásazonosítója érvénytelen.")
     if item_type == "preset" and not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,31}", target_id):
         raise RequestError("A launcher presetazonosítója érvénytelen.")
+    link_fields = {"linkMode", "webhookMethod", "webhookBody"}
     if item_type == "link":
         target_id = validate_launcher_url(target_id)
+        link_mode, webhook_method, webhook_body = validate_launcher_link_options(raw)
+        if link_mode == "webhook":
+            target_id = validate_launcher_webhook_url(target_id)
+    elif any(field in raw for field in link_fields):
+        raise RequestError("Webhook-beállítás csak webes csempéhez adható.")
     if item_type in {"allApps", "settings"} and target_id:
         raise RequestError("A launcher segédcsempéjéhez nem tartozhat célazonosító.")
     if not 1 <= len(label) <= 64 or not isinstance(raw.get("visible"), bool):
@@ -738,7 +822,10 @@ def validate_launcher_item(raw: Any, row_id: str) -> dict[str, Any]:
         icon_url = validate_launcher_url(icon_url)
     if background_color and not re.fullmatch(r"#[0-9a-f]{6}", background_color):
         raise RequestError("A launcher-csempe háttérszíne #RRGGBB formátumú legyen.")
-    return {"id": item_id, "type": item_type, "targetId": target_id, "label": label, "visible": raw["visible"], "fit": fit, "iconKey": icon_key, "iconUrl": icon_url, "backgroundColor": background_color}
+    result = {"id": item_id, "type": item_type, "targetId": target_id, "label": label, "visible": raw["visible"], "fit": fit, "iconKey": icon_key, "iconUrl": icon_url, "backgroundColor": background_color}
+    if item_type == "link":
+        result.update(linkMode=link_mode, webhookMethod=webhook_method, webhookBody=webhook_body)
+    return result
 
 
 def validate_launcher_config(raw: Any) -> dict[str, Any]:
@@ -4592,12 +4679,11 @@ class ControlHandler(BaseHTTPRequestHandler):
                 self.json_response(HTTPStatus.OK, {"ok": True, "response": response})
                 return
             if self.path == "/api/launcher/launch":
-                raw_launch = self.read_json(allow_text_plain=True)
-                if not isinstance(raw_launch, dict) or set(raw_launch) != {"type", "targetId", "label"}:
-                    raise RequestError("A launcher indítási kérése érvénytelen.")
-                item_type = str(raw_launch.get("type") or "")
-                target_id = str(raw_launch.get("targetId") or "")
-                label = str(raw_launch.get("label") or target_id).strip()[:64]
+                launch_request = validate_launcher_launch_request(self.read_json(allow_text_plain=True))
+                item_type = launch_request["type"]
+                target_id = launch_request["targetId"]
+                label = launch_request["label"]
+                webhook_status = None
                 if item_type == "app":
                     if target_id not in {item["id"] for item in self.server.input_hook.list_apps(include_system_inputs=True)}:  # type: ignore[attr-defined]
                         raise RequestError("Az alkalmazás nincs a TV telepített alkalmazásai között.")
@@ -4617,8 +4703,11 @@ class ControlHandler(BaseHTTPRequestHandler):
                     else:
                         params = {"v": 1, "action": "show", "presetId": target_id, "syncUrl": self.server.sync_urls["media-overlay"]}  # type: ignore[attr-defined]
                         self.server.launcher.launch(params, APP_ID)  # type: ignore[attr-defined]
+                elif item_type == "link" and launch_request["linkMode"] == "webhook":
+                    webhook_status = send_launcher_webhook(
+                        target_id, launch_request["webhookMethod"], launch_request["webhookBody"]
+                    )
                 elif item_type == "link":
-                    target_id = validate_launcher_url(target_id)
                     installed = {item["id"] for item in self.server.input_hook.list_apps(include_system_inputs=True)}  # type: ignore[attr-defined]
                     browser_id = "com.webos.app.browser"
                     if browser_id not in installed:
@@ -4627,7 +4716,10 @@ class ControlHandler(BaseHTTPRequestHandler):
                 else:
                     raise RequestError("Ez a launcher-művelet nem indítható.")
                 self.server.launcher_store.record_last(item_type, target_id, label)  # type: ignore[attr-defined]
-                self.json_response(HTTPStatus.OK, {"ok": True, "lastUsed": self.server.launcher_store.snapshot()["lastUsed"]})  # type: ignore[attr-defined]
+                response = {"ok": True, "lastUsed": self.server.launcher_store.snapshot()["lastUsed"]}  # type: ignore[attr-defined]
+                if webhook_status is not None:
+                    response["webhookStatus"] = webhook_status
+                self.json_response(HTTPStatus.OK, response)
                 return
             raw = self.read_json()
             module = "media-overlay"
