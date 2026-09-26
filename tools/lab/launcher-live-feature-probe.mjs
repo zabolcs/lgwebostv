@@ -33,7 +33,10 @@ for (const candidate of candidates) {
     if (!state.hidden && state.activated) { page = candidate; break; }
   } catch {}
 }
-page ||= candidates[0];
+if (!page) throw new Error('NO_ACTIVE_FULL_LAUNCHER');
+
+const selectedState = await evaluate(page, 'JSON.stringify({hidden:document.hidden,activated:!!(window.PalmSystem&&window.PalmSystem.isActivated),body:document.body.className})');
+console.log('ACTIVE_LAUNCHER=' + selectedState);
 
 const result = await evaluate(page, `
 (async function () {
