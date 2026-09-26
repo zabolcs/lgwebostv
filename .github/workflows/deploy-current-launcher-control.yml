@@ -32,5 +32,18 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Diagnose NAS deployment route
+        shell: bash
+        run: |
+          set -u
+          echo "RUNNER_HOST=$(hostname)"
+          echo "RUNNER_IPS=$(hostname -I 2>/dev/null || true)"
+          echo "PCT=$(command -v pct || true)"
+          echo "SSH_CONFIG_BEGIN"
+          grep -E '^(Host|[[:space:]]*HostName|[[:space:]]*User|[[:space:]]*IdentityFile)' ~/.ssh/config 2>/dev/null || true
+          echo "SSH_CONFIG_END"
+          echo "KEYS_BEGIN"
+          find ~/.ssh /media/lgtv -maxdepth 2 -type f \( -name 'id_*' -o -name '*.pem' \) -printf '%p\n' 2>/dev/null || true
+          echo "KEYS_END"
       - name: Deploy NAS control UI
         run: python3 tools/lab/deploy-native-launcher.py server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js
