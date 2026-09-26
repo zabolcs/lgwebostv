@@ -31,6 +31,14 @@ jobs:
       - name: Validate helper
         run: python -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
 
+      - name: Locate archived private transport metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ARCHIVE_SEARCH_BEGIN"
+          find /media/lgtv /home/actions/lgtv-import -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.tgz' \) -print 2>/dev/null | head -200
+          echo "ARCHIVE_SEARCH_END"
+
       - name: Deploy server only
         shell: bash
         run: |
