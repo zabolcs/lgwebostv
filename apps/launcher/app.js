@@ -187,11 +187,96 @@
     cachedState.config.lastUsed = { type: body.type, targetId: body.targetId, label: body.label };
     persistState(); return deepCopy(cachedState.config.lastUsed);
   }
+
+  var WEBHOOK_MODE_KEY = '__sl_mode';
+  var WEBHOOK_METHOD_KEY = '__sl_method';
+  var WEBHOOK_BODY_KEY = '__sl_body';
+
+  function encodeLinkForNas(item) {
+    if (!item || item.type !== 'link') return item;
+    var next = deepCopy(item);
+    if (next.linkMode === 'webhook') {
+      var url;
+      try { url = new URL(next.targetId); } catch (error) { throw new Error('A webhook URL érvénytelen.'); }
+      url.searchParams.set(WEBHOOK_MODE_KEY, 'webhook');
+      url.searchParams.set(WEBHOOK_METHOD_KEY, next.webhookMethod === 'POST' ? 'POST' : 'GET');
+      if (next.webhookMethod === 'POST' && next.webhookBody) url.searchParams.set(WEBHOOK_BODY_KEY, String(next.webhookBody));
+      else url.searchParams.delete(WEBHOOK_BODY_KEY);
+      next.targetId = url.toString();
+      if (next.targetId.length > 2000) throw new Error('A webhook URL és body együtt túl hosszú.');
+    }
+    delete next.linkMode;
+    delete next.webhookMethod;
+    delete next.webhookBody;
+    return next;
+  }
+
+  function decodeLinkFromNas(item) {
+    if (!item || item.type !== 'link') return item;
+    var next = deepCopy(item);
+    var url;
+    try { url = new URL(next.targetId); } catch (ignore) {
+      next.linkMode = 'website'; next.webhookMethod = 'GET'; next.webhookBody = ''; return next;
+    }
+    if (url.searchParams.get(WEBHOOK_MODE_KEY) !== 'webhook') {
+      next.linkMode = 'website'; next.webhookMethod = 'GET'; next.webhookBody = ''; return next;
+    }
+    next.linkMode = 'webhook';
+    next.webhookMethod = url.searchParams.get(WEBHOOK_METHOD_KEY) === 'POST' ? 'POST' : 'GET';
+    next.webhookBody = next.webhookMethod === 'POST' ? (url.searchParams.get(WEBHOOK_BODY_KEY) || '') : '';
+    url.searchParams.delete(WEBHOOK_MODE_KEY);
+    url.searchParams.delete(WEBHOOK_METHOD_KEY);
+    url.searchParams.delete(WEBHOOK_BODY_KEY);
+    next.targetId = url.toString();
+    return next;
+  }
+
+  function encodeConfigForNas(config) {
+    var next = deepCopy(config);
+    (next.rows || []).forEach(function (row) {
+      row.items = (row.items || []).map(encodeLinkForNas);
+    });
+    return next;
+  }
+
+  function decodeConfigFromNas(config) {
+    var next = deepCopy(config);
+    (next.rows || []).forEach(function (row) {
+      row.items = (row.items || []).map(decodeLinkFromNas);
+    });
+    return next;
+  }
+
+  function decodeStateFromNas(state) {
+    var next = deepCopy(state);
+    if (next && next.config) next.config = decodeConfigFromNas(next.config);
+    return next;
+  }
+
+  function sendWebhook(body) {
+    var method = body.webhookMethod === 'POST' ? 'POST' : 'GET';
+    var options = { method: method, cache: 'no-store', mode: 'no-cors' };
+    if (method === 'POST') options.body = String(body.webhookBody || '');
+    var timer = null;
+    var request = window.fetch(String(body.targetId || ''), options).then(function () {
+      return { ok: true, lastUsed: null, webhookStatus: null, direct: true };
+    });
+    var timeout = new Promise(function (_, reject) {
+      timer = window.setTimeout(function () { reject(new Error('A webhook nem érhető el.')); }, 5000);
+    });
+    return Promise.race([request, timeout]).then(function (result) {
+      if (timer) window.clearTimeout(timer);
+      return result;
+    }, function (error) {
+      if (timer) window.clearTimeout(timer);
+      throw error;
+    });
+  }
   function localLaunch(body) {
     var action;
     if (body.type === 'app') action = lunaLaunch(body.targetId, {});
     else if (body.type === 'link' && body.linkMode === 'webhook') {
-      return remoteJson('/api/launcher/launch', 'POST', body, 6500);
+      return sendWebhook(body);
     } else if (body.type === 'link') action = lunaLaunch('com.webos.app.browser', { target: body.targetId });
     else if (body.type === 'preset') {
       var preset = findPreset(body.targetId);
@@ -238,11 +323,17 @@
   function localRequest(path, method, body) {
     if (path === '/api/launcher/state') {
       if (validState(cachedState)) return Promise.resolve(deepCopy(cachedState));
-      return remoteJson(path, 'GET', undefined, 6000).then(function (state) { cachedState = state; persistState(); return deepCopy(state); });
+      return remoteJson(path, 'GET', undefined, 6000).then(function (state) {
+        cachedState = decodeStateFromNas(state); persistState(); return deepCopy(cachedState);
+      });
     }
     if (path === '/api/launcher/config' && method === 'POST') {
+      var nasConfig;
+      try { nasConfig = encodeConfigForNas(body); } catch (error) { return Promise.reject(error); }
       cachedState.config = deepCopy(body); persistState(); setDirty(true);
-      remoteJson(path, 'POST', body).then(function (result) { cachedState.config = result.config; persistState(); setDirty(false); }, function () {});
+      remoteJson(path, 'POST', nasConfig).then(function (result) {
+        cachedState.config = decodeConfigFromNas(result.config); persistState(); setDirty(false);
+      }, function () {});
       return Promise.resolve({ ok: true, config: deepCopy(cachedState.config), offline: true });
     }
     if (path === '/api/launcher/launch' && method === 'POST') return localLaunch(body);
@@ -261,8 +352,11 @@
     if (!origin || !controller || document.hidden) return;
     if (nasSyncActive) { scheduleNasSync(1500); return; }
     nasSyncActive = true;
-    var prepare = isDirty() && cachedState ? remoteJson('/api/launcher/config', 'POST', cachedState.config).then(function (result) { cachedState.config = result.config; setDirty(false); persistState(); }, function () {}) : Promise.resolve();
+    var prepare = isDirty() && cachedState ? remoteJson('/api/launcher/config', 'POST', encodeConfigForNas(cachedState.config)).then(function (result) {
+      cachedState.config = decodeConfigFromNas(result.config); setDirty(false); persistState();
+    }, function () {}) : Promise.resolve();
     prepare.then(function () { return remoteJson('/api/launcher/state', 'GET', undefined, 5000); }).then(function (state) {
+      state = decodeStateFromNas(state);
       var serialized = '';
       try { serialized = JSON.stringify(state); } catch (ignore) {}
       var changed = !!serialized && serialized !== cachedStateSerialized;
