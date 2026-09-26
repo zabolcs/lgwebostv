@@ -1,0 +1,23 @@
+name: Restore known-good long Back guard
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/restore-known-good-long-back-guard.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          clean: false
+      - name: Restore known-good guard
+        run: python3 tools/lab/deploy-known-good-long-back-guard.py
