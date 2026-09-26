@@ -4162,6 +4162,7 @@ class ControlHandler(BaseHTTPRequestHandler):
             "/assets/connections-ui.js": ("text/javascript; charset=utf-8", self.server.connections_ui_js),  # type: ignore[attr-defined]
             "/assets/launcher-ui.js": ("text/javascript; charset=utf-8", self.server.launcher_ui_js),  # type: ignore[attr-defined]
             "/assets/launcher-admin.js": ("text/javascript; charset=utf-8", self.server.launcher_admin_js),  # type: ignore[attr-defined]
+            "/assets/dashboard-control.js": ("text/javascript; charset=utf-8", self.server.dashboard_control_js),  # type: ignore[attr-defined]
             "/assets/launcher.css": ("text/css; charset=utf-8", self.server.launcher_css),  # type: ignore[attr-defined]
         }
         if self.path in static_assets:
@@ -4964,7 +4965,8 @@ def main() -> None:
         launcher_root = Path(__file__).parent.parent / "apps" / "launcher"
     server.launcher_ui_js = (launcher_root / "launcher-ui.js").read_bytes()  # type: ignore[attr-defined]
     server.launcher_css = (launcher_root / "launcher.css").read_bytes()  # type: ignore[attr-defined]
-    server.launcher_admin_js = (static_root / "launcher-admin.js").read_bytes()  # type: ignore[attr-defined]
+    server.launcher_admin_js = (static_root / "launcher-admin.js").read_bytes()
+    server.dashboard_control_js = (static_root / "dashboard-control.js").read_bytes()  # type: ignore[attr-defined]
     def install_tv_supervisors() -> None:
         try:
             # Guard lifecycle is independent from every low-level input engine.
