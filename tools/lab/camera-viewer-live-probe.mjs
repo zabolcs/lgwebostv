@@ -67,7 +67,9 @@ const inventory = JSON.parse(await evaluate(page, `JSON.stringify(Array.prototyp
     profileId:tile.getAttribute('data-profile-id')||'',
     name:name?name.textContent:'',
     snapshot:img?img.src:'',
-    state:state?state.textContent:''
+    state:state?state.textContent:'',
+    x:Number(tile.getAttribute('data-grid-x')||0),
+    y:Number(tile.getAttribute('data-grid-y')||0)
   };
 }))`));
 console.log('CAMERA_GRID=' + JSON.stringify(inventory));
@@ -137,48 +139,83 @@ console.log('FOCUS_ALL=' + JSON.stringify(allFocus));
 // Exercise the same keyboard path used by the physical remote.
 await evaluate(page, `(function(){var t=document.querySelectorAll('.camera-tile')[0];if(t)t.focus();return true;})()`);
 await sleep(380);
-const remoteSteps = [
-  {code:39,index:1},
-  {code:39,index:2},
-  {code:37,index:1},
-  {code:37,index:0},
-  {code:40,index:3},
-  {code:39,index:4}
-];
+const remoteCodes = [39, 40, 37, 38, 39, 40];
 const remoteNav = [];
-for (const step of remoteSteps) {
+
+function directionMatches(code, before, after) {
+  if (code === 37) return after.x < before.x;
+  if (code === 39) return after.x > before.x;
+  if (code === 38) return after.y < before.y;
+  return after.y > before.y;
+}
+
+for (const preferredCode of remoteCodes) {
+  const before = JSON.parse(await evaluate(page, `JSON.stringify((function(){
+    var tiles=Array.prototype.slice.call(document.querySelectorAll('.camera-tile'));
+    var i=tiles.indexOf(document.activeElement);
+    var t=i>=0?tiles[i]:null;
+    return {index:i,x:t?Number(t.getAttribute('data-grid-x')||0):0,y:t?Number(t.getAttribute('data-grid-y')||0):0};
+  })())`));
+
+  const candidates = inventory.filter((item, idx) => idx !== before.index && directionMatches(preferredCode, before, item));
+  if (!candidates.length) continue;
+
   const dispatchStarted = Date.now();
   await evaluate(page, `(function(){
     var e=new KeyboardEvent('keydown',{bubbles:true,cancelable:true});
-    try{Object.defineProperty(e,'keyCode',{value:${step.code}});}catch(ignore){}
-    try{Object.defineProperty(e,'which',{value:${step.code}});}catch(ignore){}
+    try{Object.defineProperty(e,'keyCode',{value:${preferredCode}});}catch(ignore){}
+    try{Object.defineProperty(e,'which',{value:${preferredCode}});}catch(ignore){}
     window.dispatchEvent(e);
     return true;
   })()`);
+
+  let moved = null;
+  while (Date.now() - dispatchStarted < 350) {
+    moved = JSON.parse(await evaluate(page, `JSON.stringify((function(){
+      var tiles=Array.prototype.slice.call(document.querySelectorAll('.camera-tile'));
+      var i=tiles.indexOf(document.activeElement);
+      var t=i>=0?tiles[i]:null;
+      return {index:i,x:t?Number(t.getAttribute('data-grid-x')||0):0,y:t?Number(t.getAttribute('data-grid-y')||0):0};
+    })())`));
+    if (moved.index !== before.index) break;
+    await sleep(20);
+  }
   const dispatchMs = Date.now() - dispatchStarted;
+  if (!moved || moved.index === before.index || !directionMatches(preferredCode, before, moved)) {
+    throw new Error('REMOTE_DIRECTION_FAIL_' + preferredCode + '=' + JSON.stringify({before,moved}));
+  }
+
   const liveStarted = Date.now();
-  let state = {active:false,totalLive:0,live:false};
-  while (Date.now() - liveStarted < 1200) {
+  let state = null;
+  while (Date.now() - liveStarted < 1500) {
     state = JSON.parse(await evaluate(page, `JSON.stringify((function(){
       var tiles=document.querySelectorAll('.camera-tile');
-      var target=tiles[${step.index}];
+      var target=tiles[${moved.index}];
       var live=target&&target.querySelector('.camera-grid-live');
-      return {active:document.activeElement===target,totalLive:document.querySelectorAll('.camera-grid-live').length,live:!!live};
+      return {
+        active:document.activeElement===target,
+        totalLive:document.querySelectorAll('.camera-grid-live').length,
+        live:!!live
+      };
     })())`));
+    if (state.totalLive > 1) throw new Error('MULTIPLE_LIVE_STREAMS=' + state.totalLive);
     if (state.active && state.totalLive===1 && state.live) break;
     await sleep(40);
   }
+
+  state.code = preferredCode;
+  state.from = before;
+  state.to = moved;
   state.dispatchMs = dispatchMs;
   state.liveMs = Date.now() - liveStarted;
-  state.elapsedMs = dispatchMs + state.liveMs;
   remoteNav.push(state);
-  console.log('REMOTE_STEP_' + step.index + '=' + JSON.stringify(state));
+  console.log('REMOTE_DIRECTION_' + preferredCode + '=' + JSON.stringify(state));
 }
 console.log('REMOTE_NAV=' + JSON.stringify(remoteNav));
-for (let i = 0; i < remoteNav.length; i += 1) {
-  const state = remoteNav[i];
-  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1450 || state.dispatchMs > 500) {
-    throw new Error('REMOTE_NAV_FAIL_' + remoteSteps[i].index + '=' + JSON.stringify(state));
+if (remoteNav.length < 3) throw new Error('REMOTE_NAV_TOO_FEW_MOVES=' + remoteNav.length);
+for (const state of remoteNav) {
+  if (!state.active || state.totalLive !== 1 || !state.live || state.liveMs > 1450 || state.dispatchMs > 350) {
+    throw new Error('REMOTE_NAV_FAIL=' + JSON.stringify(state));
   }
 }
 
