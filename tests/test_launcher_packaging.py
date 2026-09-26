@@ -92,6 +92,10 @@ class LauncherPackagingTests(unittest.TestCase):
             quick_manifest = json.loads(quick[quick_root + "appinfo.json"])
             self.assertEqual((full_manifest["transparent"], full_manifest["defaultWindowType"]), (False, "card"))
             self.assertTrue(full_manifest["supportGIP"])
+            self.assertFalse(full_manifest["noSplashOnLaunch"])
+            splash = full[full_root + "splash-black.png"]
+            self.assertTrue(splash.startswith(b"\x89PNG\r\n\x1a\n"), "generated cold-boot splash must be PNG")
+            self.assertEqual(splash[16:24], (1920).to_bytes(4, "big") + (1080).to_bytes(4, "big"))
             self.assertEqual((quick_manifest["transparent"], quick_manifest["defaultWindowType"]), (True, "popup"))
             self.assertEqual(full_manifest["version"], quick_manifest["version"])
 
