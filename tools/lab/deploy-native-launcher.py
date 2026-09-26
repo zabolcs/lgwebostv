@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 import shlex
 import sys
+import os
 ROOT=Path(__file__).resolve().parent
 SOURCE=ROOT.parent.parent/'remote-control'
 import remote
@@ -11,12 +12,16 @@ import remote
 # checkpoint metadata. Resolve the same private metadata from the runner/NAS
 # without copying credentials into the repository.
 if hasattr(remote, "OLD") and not Path(remote.OLD).exists():
-    candidates = []
-    for root in (Path("/media/lgtv"), Path("/home/actions/lgtv-import")):
-        if root.exists():
-            candidates.extend(root.rglob("CHECKPOINT-LGTV-2026-08-31.md"))
-    if candidates:
-        remote.OLD = candidates[0]
+    metadata = os.environ.get("LGTV_PRIVATE_METADATA", "").strip()
+    if metadata and Path(metadata).is_file():
+        remote.OLD = Path(metadata)
+    else:
+        candidates = []
+        for root in (Path("/media/lgtv"), Path("/home/actions/lgtv-import")):
+            if root.exists():
+                candidates.extend(root.rglob("CHECKPOINT-LGTV-2026-08-31.md"))
+        if candidates:
+            remote.OLD = candidates[0]
 
 FILES=('server.py','lg_ssap.py','ssap_pairing.py','launcher_early.py',
        'static/index.html','static/ssap-control.js','static/power-control.js','static/launcher-admin.js','static/connections-ui.js','static/dashboard-control.js','lgtv-launcher-early.service')
