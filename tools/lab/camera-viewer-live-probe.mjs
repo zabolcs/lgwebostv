@@ -97,6 +97,37 @@ async function focusAndMeasure(index) {
   return state;
 }
 
+// Rapid navigation should not fan out multiple MJPEG connections. Only the
+// camera that remains focused after the debounce may become live.
+for (let i = 0; i < inventory.length; i += 1) {
+  await evaluate(page, `(function(){var t=document.querySelectorAll('.camera-tile')[${i}];if(t)t.focus();return true;})()`);
+  await sleep(90);
+}
+await sleep(420);
+const rapid = JSON.parse(await evaluate(page, `JSON.stringify((function(){
+  var tiles=document.querySelectorAll('.camera-tile');
+  var last=tiles[tiles.length-1];
+  var live=last&&last.querySelector('.camera-grid-live');
+  return {
+    activeLast:document.activeElement===last,
+    totalLive:document.querySelectorAll('.camera-grid-live').length,
+    liveUrl:live?(live.getAttribute('data-live-mjpeg')||live.src||''):''
+  };
+})())`));
+console.log('RAPID_NAV=' + JSON.stringify(rapid));
+if (!rapid.activeLast || rapid.totalLive !== 1 || !rapid.liveUrl) throw new Error('RAPID_NAV_LIVE_FAIL');
+
+const allFocus = [];
+for (let i = 0; i < inventory.length; i += 1) {
+  const measured = await focusAndMeasure(i);
+  allFocus.push({index:i,name:inventory[i].name,elapsedMs:measured.elapsedMs,totalLive:measured.totalLive,liveUrl:measured.liveUrl});
+  if (!measured.active || measured.totalLive !== 1 || !measured.liveUrl || measured.badge !== 'LIVE' || measured.oldLiveLabel) {
+    throw new Error('FOCUS_STRESS_FAIL_' + i);
+  }
+  if (measured.elapsedMs > 1200) throw new Error('FOCUS_STRESS_TOO_SLOW_' + i + '=' + measured.elapsedMs);
+}
+console.log('FOCUS_ALL=' + JSON.stringify(allFocus));
+
 const first = await focusAndMeasure(0);
 console.log('FOCUS_1=' + JSON.stringify(first));
 if (!first.active || first.totalLive !== 1 || !first.liveUrl || first.badge !== 'LIVE' || first.oldLiveLabel) throw new Error('FIRST_FOCUS_LIVE_FAIL');
