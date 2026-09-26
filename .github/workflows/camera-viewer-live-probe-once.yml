@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# stress v2
+
 jobs:
   probe:
     runs-on: [self-hosted, Linux, X64]
