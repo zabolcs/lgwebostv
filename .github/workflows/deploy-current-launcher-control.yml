@@ -76,6 +76,24 @@ jobs:
               if password:
                   found = {"username": username, "password": password}
           if not found or not found.get("password"):
+              import copy
+              class Redact(ast.NodeTransformer):
+                  def visit_Constant(self, node):
+                      if not isinstance(node.value, str):
+                          return node
+                      value = node.value
+                      safe = (
+                          value == os.environ["PVE"]
+                          or value in {"root", "pve", "ct"}
+                          or value.startswith("/media/")
+                          or value.startswith("/home/")
+                          or value.startswith("/etc/")
+                      )
+                      return node if safe else ast.copy_location(ast.Constant("<redacted>"), node)
+              for item in tree.body:
+                  if isinstance(item, ast.FunctionDef) and item.name in {"connect", "connect_tv"}:
+                      print("SANITIZED_" + item.name.upper())
+                      print(ast.unparse(Redact().visit(copy.deepcopy(item))))
               raise SystemExit("PVE password could not be resolved from the legacy helper")
           user = found.get("username") or found.get("user") or "root"
           with open(os.environ["CREDS"], "w", encoding="utf-8") as out:
