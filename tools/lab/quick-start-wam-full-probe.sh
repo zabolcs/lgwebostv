@@ -11,7 +11,16 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 cp "$SOURCE_KEY" "$TMP/id_rsa"
 chmod 600 "$TMP/id_rsa"
-ssh-keyscan -T 3 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null
+KEYSCAN_READY=0
+for i in $(seq 1 24); do
+  if ssh-keyscan -T 1 "$TV_HOST" >"$TMP/known_hosts" 2>/dev/null && [ -s "$TMP/known_hosts" ]; then
+    KEYSCAN_READY=1
+    echo "SSH_KEYSCAN_READY_POLL=$i"
+    break
+  fi
+  sleep 0.5
+done
+test "$KEYSCAN_READY" -eq 1
 SSH=(ssh -T -i "$TMP/id_rsa" -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known_hosts" "$TV")
 
 "${SSH[@]}" true
