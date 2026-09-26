@@ -148,7 +148,7 @@ function makeEnvironment(ids, savedStorage) {
 }
 
 function inferTag(id) {
-  if (/button|close|new-profile|delete-profile|cancel-settings|settings-button|viewer-audio|page-previous|page-next|save-view-settings/.test(id)) return 'BUTTON';
+  if (/button|close|new-profile|delete-profile|cancel-settings|settings-button|viewer-audio|viewer-mode|page-previous|page-next|save-view-settings/.test(id)) return 'BUTTON';
   if (/select|type|scheme|corner/.test(id)) return 'SELECT';
   if (/content/.test(id)) return 'TEXTAREA';
   if (/name|camera-id|source|host|port|path|width|height|margin|seconds/.test(id)) return 'INPUT';
@@ -162,7 +162,7 @@ function runCameraLifecycle() {
     'viewer-transport', 'camera-grid', 'empty-state', 'message', 'settings-button', 'settings-panel',
     'profile-select', 'profile-name', 'camera-id', 'primary-source', 'preview-source', 'stream-scheme',
     'stream-host', 'stream-port', 'player-port', 'player-path', 'settings-error', 'empty-settings-button', 'settings-close',
-    'cancel-settings', 'new-profile', 'delete-profile', 'settings-form', 'viewer-audio',
+    'cancel-settings', 'new-profile', 'delete-profile', 'settings-form', 'viewer-audio', 'viewer-mode',
     'screen-guard', 'page-controls', 'page-previous', 'page-next', 'page-indicator', 'camera-audio',
     'layout-size', 'featured-camera', 'prevent-screensaver', 'preview-interval-seconds', 'save-view-settings'
   ];
@@ -205,7 +205,10 @@ function runCameraLifecycle() {
   assert.strictEqual(env.root.webOSSystem.activateCount, 2, 'warm relaunch must activate the app');
   assert.strictEqual(env.elements['viewer-screen'].classList.contains('hidden'), false);
   assert.strictEqual(env.elements['viewer-stage'].children.length, 1);
-  assert.strictEqual(env.elements['viewer-stage'].children[0].tagName, 'IFRAME');
+  assert.strictEqual(env.elements['viewer-stage'].children[0].tagName, 'IMG', 'fullscreen defaults to MJPEG');
+  env.elements['viewer-mode'].click();
+  assert.strictEqual(env.elements['viewer-stage'].children[0].tagName, 'IFRAME', 'video toggle switches to hosted WebRTC');
+  assert.strictEqual(env.storage['hu.szabi.cameraviewer.fullscreen-transport.v1'], 'webrtc', 'video choice is remembered');
 
   env.elements['viewer-close'].click();
   assert.strictEqual(env.root.closeCount, 1, 'an externally opened full-screen camera must close the popup back to the underlying app');
