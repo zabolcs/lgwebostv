@@ -24,127 +24,30 @@ jobs:
       - name: Validate helper
         run: python3 -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
 
+      - name: Probe runner Python SSH support
+        run: |
+          set -e
+          echo "python=$(python3 --version 2>&1)"
+          if python3 -c 'import paramiko' 2>/dev/null; then
+            echo "PARAMIKO_SYSTEM=YES"
+          else
+            echo "PARAMIKO_SYSTEM=NO"
+          fi
+          if sudo -n true 2>/dev/null; then
+            echo "SUDO_NONINTERACTIVE=YES"
+          else
+            echo "SUDO_NONINTERACTIVE=NO"
+          fi
+          FOUND="$(find /media/lgtv /home/actions -type d -path '*/site-packages/paramiko' -print -quit 2>/dev/null || true)"
+          if [ -n "$FOUND" ]; then
+            echo "PARAMIKO_SITE=$(dirname "$FOUND")"
+          else
+            echo "PARAMIKO_SITE=NONE"
+          fi
+
       - name: Deploy server only
         run: |
           set -euo pipefail
-          PVE=192.168.0.120
-          KNOWN="$(mktemp)"
-          CT_SCRIPT="$(mktemp)"
-          CREDS="$(mktemp)"
-          ASKPASS="$(mktemp)"
-          trap 'rm -f "$KNOWN" "$CT_SCRIPT" "$CREDS" "$ASKPASS"' EXIT
-          ssh-keyscan -T 3 "$PVE" >"$KNOWN" 2>/dev/null
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
-          test -n "$REMOTE_PY" || { echo "Legacy PVE connection helper not found" >&2; exit 1; }
-          REMOTE_PY="$REMOTE_PY" CREDS="$CREDS" PVE="$PVE" python3 - <<'PY'
-          import ast, os, re, shlex
-          source = open(os.environ["REMOTE_PY"], encoding="utf-8").read()
-          tree = ast.parse(source)
-          values = {}
-          for node in ast.walk(tree):
-              if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                  targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                  value_node = node.value
-                  if isinstance(value_node, ast.Constant) and isinstance(value_node.value, str):
-                      for target in targets:
-                          if isinstance(target, ast.Name):
-                              values[target.id] = value_node.value
-          def resolve(node):
-              if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                  return node.value
-              if isinstance(node, ast.Name):
-                  return values.get(node.id)
-              return None
-          found = None
-          for node in ast.walk(tree):
-              if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "connect":
-                  continue
-              row = {}
-              if node.args:
-                  row["hostname"] = resolve(node.args[0])
-              for kw in node.keywords:
-                  if kw.arg in {"hostname", "host", "username", "user", "password", "key_filename"}:
-                      row[kw.arg] = resolve(kw.value)
-              host = row.get("hostname") or row.get("host")
-              if host == os.environ["PVE"] and row.get("password"):
-                  found = row
-                  break
-          if not found:
-              # Fallback for helpers that assign credentials before calling connect().
-              password = next((v for k, v in values.items() if "PASS" in k.upper() and "PATH" not in k.upper()), None)
-              username = next((v for k, v in values.items() if "USER" in k.upper() and isinstance(v, str)), "root")
-              if password:
-                  found = {"username": username, "password": password}
-          if not found or not found.get("password"):
-              import copy
-              class Redact(ast.NodeTransformer):
-                  def visit_Constant(self, node):
-                      if not isinstance(node.value, str):
-                          return node
-                      value = node.value
-                      safe = (
-                          value == os.environ["PVE"]
-                          or value in {"root", "pve", "ct"}
-                          or value.startswith("/media/")
-                          or value.startswith("/home/")
-                          or value.startswith("/etc/")
-                      )
-                      return node if safe else ast.copy_location(ast.Constant("<redacted>"), node)
-              for item in tree.body:
-                  if isinstance(item, (ast.Assign, ast.AnnAssign)):
-                      targets = item.targets if isinstance(item, ast.Assign) else [item.target]
-                      if any(isinstance(t, ast.Name) and t.id in {"OLD", "KNOWN"} for t in targets):
-                          print("SANITIZED_ASSIGNMENT")
-                          print(ast.unparse(item))
-                  if isinstance(item, ast.FunctionDef) and item.name in {"connect", "connect_tv"}:
-                      print("SANITIZED_" + item.name.upper())
-                      print(ast.unparse(Redact().visit(copy.deepcopy(item))))
-              raise SystemExit("PVE password could not be resolved from the legacy helper")
-          user = found.get("username") or found.get("user") or "root"
-          with open(os.environ["CREDS"], "w", encoding="utf-8") as out:
-              out.write("PVE_USER=" + shlex.quote(user) + "\n")
-              out.write("PVE_PASSWORD=" + shlex.quote(found["password"]) + "\n")
-          os.chmod(os.environ["CREDS"], 0o600)
-          PY
-          source "$CREDS"
-          export PVE_PASSWORD DISPLAY=: SSH_ASKPASS_REQUIRE=force
-          cat >"$ASKPASS" <<'SH'
-          #!/bin/sh
-          printf '%s\n' "$PVE_PASSWORD"
-          SH
-          chmod 700 "$ASKPASS"
-          export SSH_ASKPASS="$ASKPASS"
-          SSH=(setsid -w ssh -T -o BatchMode=no -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" "$PVE_USER@$PVE")
-          SCP=(setsid -w scp -q -o BatchMode=no -o NumberOfPasswordPrompts=1 -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN")
-          "${SSH[@]}" true
-          cat >"$CT_SCRIPT" <<'SH'
-          #!/bin/sh
-          set -eu
-          BACKUP="$(mkdir -p /var/backups/lgtv-control && mktemp -d /var/backups/lgtv-control/launcher-webhook.XXXXXX)"
-          echo "Rollback: $BACKUP"
-          cp -p /opt/lgtv-control/server.py "$BACKUP/server.py"
-          rollback() {
-            echo "Server deploy failed; rolling back to $BACKUP" >&2
-            cp -p "$BACKUP/server.py" /opt/lgtv-control/server.py
-            systemctl restart lgtv-control.service || true
-          }
-          trap rollback EXIT HUP INT TERM
-          python3 -m py_compile /tmp/lgtv-control-server.py
-          install -o root -g root -m 0755 /tmp/lgtv-control-server.py /opt/lgtv-control/server.py
-          systemctl restart lgtv-control.service
-          sleep 2
-          systemctl is-active --quiet lgtv-control.service
-          python3 - <<'PY'
-          import json, urllib.request
-          with urllib.request.urlopen("http://127.0.0.1:8765/api/health", timeout=5) as response:
-              payload = json.load(response)
-          assert payload.get("ok") is True, payload
-          print("health=" + json.dumps(payload, separators=(",", ":")))
-          PY
-          grep -q 'def send_launcher_webhook' /opt/lgtv-control/server.py
-          trap - EXIT HUP INT TERM
-          echo DEPLOY_LAUNCHER_CONTROL=PASS
-          SH
-          "${SCP[@]}" remote-control/server.py "root@$PVE:/tmp/lgtv-control-server.py"
-          "${SCP[@]}" "$CT_SCRIPT" "root@$PVE:/tmp/deploy-lgtv-control.sh"
-          "${SSH[@]}" "pct push 125 /tmp/lgtv-control-server.py /tmp/lgtv-control-server.py && pct push 125 /tmp/deploy-lgtv-control.sh /tmp/deploy-lgtv-control.sh && pct exec 125 -- chmod 700 /tmp/deploy-lgtv-control.sh && pct exec 125 -- /tmp/deploy-lgtv-control.sh"
+          test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
+          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python3 tools/lab/deploy-native-launcher.py server.py
