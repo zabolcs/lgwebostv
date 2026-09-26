@@ -23,6 +23,10 @@ assert set(selected) <= set(FILES)
 if not HELPER.is_file():
     raise SystemExit(f"Private Proxmox helper not found: {HELPER}")
 
+# Preload the runner-compatible SSH stack before the legacy helper prepends its vendored python/ tree.
+import paramiko  # noqa: F401
+import cryptography  # noqa: F401
+
 spec = importlib.util.spec_from_file_location("lgtv_private_remote", HELPER)
 remote = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
