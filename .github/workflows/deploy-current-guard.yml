@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# long-back guard redeploy
+
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64]
