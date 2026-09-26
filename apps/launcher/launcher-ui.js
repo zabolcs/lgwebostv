@@ -25,34 +25,32 @@
     var cache = global.LauncherWallpaperCache || {};
     return String(cache[wallpaperKey(value)] || '');
   }
-  function directPresetPreview(preset) {
-    var source = String(preset && preset.previewUrl || '');
-    try {
-      var parsed = new URL(source);
-      var host = parsed.hostname;
-      var octets = host.split('.').map(function (value) { return Number(value); });
-      var privateHost = octets.length === 4 && octets.every(function (value) { return value >= 0 && value <= 255; }) &&
-        octets.join('.') === host &&
-        (octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) || (octets[0] === 192 && octets[1] === 168));
-      if (!privateHost || host === '192.168.0.100' || octets[3] === 0 || octets[3] === 255) return '';
-      if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username || parsed.password || parsed.hash) return '';
-      if (parsed.port && (Number(parsed.port) < 1 || Number(parsed.port) > 65535)) return '';
-      if (parsed.pathname !== '/api/frame.jpeg' || !/^\?src=[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(parsed.search)) return '';
-      return parsed.protocol + '//' + parsed.host + parsed.pathname + parsed.search;
-    } catch (ignore) {}
+  function directPresetGo2rtc(preset, targetPath) {
+    var sources = [
+      String(preset && preset.content || ''),
+      String(preset && preset.previewUrl || '')
+    ];
+    for (var index = 0; index < sources.length; index += 1) {
+      try {
+        var parsed = new URL(sources[index]);
+        var host = parsed.hostname;
+        var octets = host.split('.').map(function (value) { return Number(value); });
+        var privateHost = octets.length === 4 && octets.every(function (value) { return value >= 0 && value <= 255; }) &&
+          octets.join('.') === host &&
+          (octets[0] === 10 || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) || (octets[0] === 192 && octets[1] === 168));
+        if (!privateHost || host === '192.168.0.100' || octets[3] === 0 || octets[3] === 255) continue;
+        if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username || parsed.password || parsed.hash) continue;
+        if (parsed.port && (Number(parsed.port) < 1 || Number(parsed.port) > 65535)) continue;
+        if (!/^\?src=[A-Za-z0-9][A-Za-z0-9._-]{0,47}$/.test(parsed.search)) continue;
+        if (parsed.pathname !== '/api/frame.jpeg' && parsed.pathname !== '/api/stream.mjpeg') continue;
+        parsed.pathname = targetPath;
+        return parsed.protocol + '//' + parsed.host + parsed.pathname + parsed.search;
+      } catch (ignore) {}
+    }
     return '';
   }
-  function directPresetMjpeg(preset) {
-    var preview = directPresetPreview(preset);
-    if (!preview) return '';
-    try {
-      var parsed = new URL(preview);
-      if (parsed.pathname !== '/api/frame.jpeg') return '';
-      parsed.pathname = '/api/stream.mjpeg';
-      return parsed.protocol + '//' + parsed.host + parsed.pathname + parsed.search;
-    } catch (ignore) {}
-    return '';
-  }
+  function directPresetPreview(preset) { return directPresetGo2rtc(preset, '/api/frame.jpeg'); }
+  function directPresetMjpeg(preset) { return directPresetGo2rtc(preset, '/api/stream.mjpeg'); }
 
   function weatherIcon(code) {
     code = Number(code);
