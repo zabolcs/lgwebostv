@@ -31,7 +31,7 @@
 #define BITS_PER_LONG (sizeof(unsigned long) * 8U)
 #define LONGS_FOR(x) (((x) + BITS_PER_LONG) / BITS_PER_LONG)
 
-enum binding_kind { BIND_ORIGINAL = 0, BIND_IGNORE, BIND_REPLACE, BIND_ACTION };
+enum binding_kind { BIND_ORIGINAL = 0, BIND_IGNORE, BIND_REPLACE, BIND_ACTION, BIND_LONG_ACTION };
 
 struct binding {
     enum binding_kind kind;
@@ -61,6 +61,8 @@ static bool held[BROKER_KEY_MAX + 1];
 static int routed[BROKER_KEY_MAX + 1]; /* -1 = consumed, otherwise output code */
 static unsigned short output_refs[BROKER_KEY_MAX + 1];
 static uint64_t last_action_ms[BROKER_KEY_MAX + 1];
+static bool long_action_armed[BROKER_KEY_MAX + 1];
+static bool long_action_fired[BROKER_KEY_MAX + 1];
 
 static void on_signal(int sig) {
     (void)sig;
@@ -197,6 +199,8 @@ static int load_config(const char *path, struct config *cfg) {
                 if (parse_code(value + 8, &target) != 0) goto invalid;
                 cfg->bindings[code].kind = BIND_REPLACE;
                 cfg->bindings[code].target = (unsigned short)target;
+            } else if (!strcmp(value, "long-action")) {
+                cfg->bindings[code].kind = BIND_LONG_ACTION;
             } else {
                 goto invalid;
             }
@@ -398,6 +402,11 @@ static int process_event(const struct config *cfg, int ufd, struct input_event e
         else if (binding.kind == BIND_ACTION) {
             char path[PATH_LENGTH];
             if (safe_action_file(code, path, sizeof(path)) && spawn_action(code, path)) target = -1;
+        } else if (binding.kind == BIND_LONG_ACTION) {
+            /* Preserve the normal short press.  Only repeats are intercepted,
+             * so the factory/app receives the original down/up pair unchanged. */
+            long_action_armed[code] = true;
+            long_action_fired[code] = false;
         }
         held[code] = true;
         routed[code] = target;
@@ -407,8 +416,23 @@ static int process_event(const struct config *cfg, int ufd, struct input_event e
         return forward_event(ufd, &event);
     }
     int target = routed[code];
+    if (event.value == 2 && long_action_armed[code]) {
+        if (!long_action_fired[code]) {
+            char path[PATH_LENGTH];
+            if (safe_action_file(code, path, sizeof(path)) && spawn_action(code, path)) {
+                long_action_fired[code] = true;
+            } else {
+                /* Fail open: if the action is unavailable, restore the factory
+                 * repeat path instead of swallowing the platform long press. */
+                long_action_armed[code] = false;
+            }
+        }
+        if (long_action_fired[code]) return 0;
+    }
     if (event.value == 0) {
         held[code] = false;
+        long_action_armed[code] = false;
+        long_action_fired[code] = false;
         if (target < 0 || --output_refs[target] != 0) return 0;
     } else if (target < 0 || event.value == 1) {
         return 0;
@@ -432,6 +456,8 @@ static int release_forwarded_keys(int output) {
     event.code = SYN_REPORT;
     if (forward_event(output, &event) != 0) result = -1;
     memset(held, 0, sizeof(held));
+    memset(long_action_armed, 0, sizeof(long_action_armed));
+    memset(long_action_fired, 0, sizeof(long_action_fired));
     return result;
 }
 
