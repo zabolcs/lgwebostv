@@ -44,6 +44,8 @@ jobs:
           done
           if [ "$ok" -ne 1 ]; then
             echo "FOREGROUND_FINAL=$last"
+            surface="$("${SSH[@]}" "luna-send -n 1 -w 1500 -f luna://com.webos.surfacemanager/getForegroundWindowInfo '{}' 2>/dev/null || true")"
+            echo "SURFACE_FINAL=$surface"
             "${SSH[@]}" 'for f in enabled home-mode full-presentation; do printf "%s=" "$f"; cat "/var/lib/webosbrew/launcher-home/$f" 2>/dev/null || echo missing; done
               for f in power-state boot-ready power-startup wake-signal home-active allow-home full-close-suppress foreground last-launch; do
                 p="/tmp/hu.szabi.launcher.$f"
