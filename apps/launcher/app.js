@@ -347,6 +347,19 @@
     return remoteJson(path, method, body);
   }
 
+  function manualRefreshFromNas() {
+    if (!origin) return Promise.reject(new Error('A NAS-kapcsolat nincs beállítva.'));
+    var prepare = isDirty() && cachedState ? remoteJson('/api/launcher/config', 'POST', encodeConfigForNas(cachedState.config)).then(function (result) {
+      cachedState.config = decodeConfigFromNas(result.config); setDirty(false); persistState();
+    }) : Promise.resolve();
+    return prepare.then(function () { return remoteJson('/api/launcher/state', 'GET', undefined, 6000); }).then(function (state) {
+      state = decodeStateFromNas(state);
+      cachedState = state;
+      persistState(JSON.stringify(state));
+      return deepCopy(state);
+    });
+  }
+
   function syncFromNas() {
     nasSyncTimer = null;
     if (!origin || !controller || document.hidden) return;
@@ -390,6 +403,7 @@
         recordPaint('__launcherFirstPaintAt');
       },
       onConnection: function () { setup(origin); },
+      onRefresh: manualRefreshFromNas,
       onPark: function () { return localRequest('/api/launcher/park', 'POST', {}); },
       onNativePark: function () { return localRequest('/api/launcher/hidden', 'POST', {}); }
     });
