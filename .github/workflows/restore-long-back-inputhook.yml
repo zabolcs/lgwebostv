@@ -1,0 +1,81 @@
+name: Restore long Back Input Hook
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/restore-long-back-inputhook.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          clean: false
+
+      - name: Enable narrow lginput2 watchdog and verify attach
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          KEY="$TMP/id_rsa"
+          cp /media/lgtv/id_rsa "$KEY"
+          chmod 600 "$KEY"
+
+          ssh-keyscan -T 3 192.168.0.223 >"$TMP/known-ct" 2>/dev/null
+          ssh-keyscan -T 3 192.168.0.240 >"$TMP/known-tv" 2>/dev/null
+          CT=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known-ct" root@192.168.0.223)
+          TV=(ssh -T -i "$KEY" -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$TMP/known-tv" root@192.168.0.240)
+
+          BACKUP="$("${CT[@]}" 'mkdir -p /var/backups/lgtv-control && cp -p /etc/lgtv-control/config.json /var/backups/lgtv-control/config.before-long-back-inputhook.json && echo /var/backups/lgtv-control/config.before-long-back-inputhook.json')"
+          echo "CONFIG_BACKUP=$BACKUP"
+
+          "${CT[@]}" 'python3 - <<"PY"
+import json
+from pathlib import Path
+p=Path("/etc/lgtv-control/config.json")
+data=json.loads(p.read_text())
+data["input_hook_watchdog_enabled"]=True
+tmp=p.with_suffix(".json.tmp")
+tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False)+"\n")
+tmp.replace(p)
+PY
+systemctl restart lgtv-control.service
+systemctl is-active --quiet lgtv-control.service'
+
+          attached=0
+          for i in $(seq 1 20); do
+            if "${TV[@]}" 'p=$(pidof lginput2 2>/dev/null || true); test -n "$p" && grep -q libphp /proc/$p/maps 2>/dev/null'; then
+              attached=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$attached" -ne 1 ]; then
+            echo "Input Hook attach failed; rolling back config." >&2
+            "${TV[@]}" 'echo "--- watchdog ---"; ls -l /var/lib/webosbrew/inputhook-watchdog 2>/dev/null || true; echo "--- repair log ---"; tail -n 80 /tmp/hu.szabi.inputhook-repair-detail.log 2>/dev/null || true; echo "--- watchdog log ---"; tail -n 80 /tmp/hu.szabi.inputhook-watchdog.log 2>/dev/null || true' || true
+            "${CT[@]}" 'cp -p /var/backups/lgtv-control/config.before-long-back-inputhook.json /etc/lgtv-control/config.json; systemctl restart lgtv-control.service' || true
+            exit 1
+          fi
+
+          "${TV[@]}" 'set -e
+            p=$(pidof lginput2)
+            echo "LGINPUT2_PID=$p"
+            grep -q libphp /proc/$p/maps
+            echo "HOOK_ATTACHED=yes"
+            echo "WATCHDOG_ENABLED=$(test -f /var/lib/webosbrew/inputhook-watchdog/enabled && echo yes || echo no)"
+            echo "WATCHDOG_INIT=$(test -f /var/lib/webosbrew/init.d/inputhook-watchdog && echo yes || echo no)"
+            grep -q launcherHome /home/root/.config/lginputhook/keybinds.json
+            echo "LAUNCHER_HOME_BINDING=yes"
+            tail -n 20 /tmp/hu.szabi.inputhook-watchdog.log 2>/dev/null || true
+            tail -n 20 /tmp/hu.szabi.inputhook-repair-detail.log 2>/dev/null || true
+          '
