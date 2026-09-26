@@ -2,6 +2,10 @@ name: Deploy long Back launcher fix
 
 on:
   workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-long-back-fix.yml'
 
 permissions:
   contents: read
