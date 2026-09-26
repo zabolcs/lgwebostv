@@ -44,6 +44,8 @@ jobs:
           else
             echo "PARAMIKO_SITE=NONE"
           fi
+          echo "Checkpoint path candidates:"
+          find /media/lgtv /home/actions/lgtv-import -type f \( -iname '*checkpoint*lgtv*2026*08*31*' -o -iname '*lgtv*2026*08*31*' -o -name 'known_hosts.pve' \) -print 2>/dev/null | head -50
 
       - name: Deploy server only
         run: |
