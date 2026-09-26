@@ -32,41 +32,5 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install transport dependency
-        run: python -m pip install --disable-pip-version-check --quiet 'paramiko==3.5.1'
-
-      - name: Validate helper
-        run: python -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
-
-      - name: Locate archived private transport metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "ARCHIVE_MATCH_BEGIN"
-          while IFS= read -r archive; do
-            case "$archive" in
-              *.zip)
-                entry="$(unzip -Z1 "$archive" 2>/dev/null | grep -m1 'CHECKPOINT-LGTV-2026-08-31.md' || true)"
-                ;;
-              *.tar.gz|*.tgz)
-                entry="$(tar -tzf "$archive" 2>/dev/null | grep -m1 'CHECKPOINT-LGTV-2026-08-31.md' || true)"
-                ;;
-              *) entry="" ;;
-            esac
-            if [ -n "$entry" ]; then
-              echo "MATCH_ARCHIVE=$archive"
-              echo "MATCH_ENTRY=$entry"
-              exit 0
-            fi
-          done < <(find /media/lgtv /home/actions/lgtv-import -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.tgz' \) -print 2>/dev/null)
-          echo "MATCH_ARCHIVE=NONE"
-          echo "ARCHIVE_MATCH_END"
-
       - name: Deploy NAS control UI
-        shell: bash
-        run: |
-          set -euo pipefail
-          REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
-          test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
-          echo "Using private transport helper."
-          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python tools/lab/deploy-native-launcher.py server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js
+        run: python3 tools/lab/deploy-native-launcher.py server.py static/index.html static/power-control.js static/launcher-admin.js static/connections-ui.js static/dashboard-control.js
