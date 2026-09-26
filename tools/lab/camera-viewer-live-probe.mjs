@@ -53,6 +53,12 @@ if (!page) {
 }
 if (!page) throw new Error('NO_ACTIVE_CAMERA_VIEWER');
 
+for (let i = 0; i < 24; i += 1) {
+  const count = Number(await evaluate(page, 'document.querySelectorAll(".camera-tile").length')) || 0;
+  if (count >= 2) break;
+  await sleep(250);
+}
+
 const inventory = JSON.parse(await evaluate(page, `JSON.stringify(Array.prototype.map.call(document.querySelectorAll('.camera-tile'), function(tile) {
   var img=tile.querySelector('img:not(.camera-grid-live)');
   var name=tile.querySelector('.tile-name');
