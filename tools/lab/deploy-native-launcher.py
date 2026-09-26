@@ -74,6 +74,23 @@ os.chmod(metadata_path, 0o600)
 password = ""
 remote.OLD = metadata_path
 
+if hasattr(remote, "KNOWN") and not Path(remote.KNOWN).is_file():
+    known_candidates = []
+    for root in (
+        Path("/media/lgtv/checkpoint-20260925-20260925-092443"),
+        Path("/media/lgtv/checkpoint-20260919-20260919-211820"),
+        Path("/media/lgtv"),
+    ):
+        if not root.exists():
+            continue
+        known_candidates.extend(root.rglob("known_hosts.pve"))
+        if known_candidates:
+            break
+    if not known_candidates:
+        raise SystemExit("Pinned Proxmox known_hosts.pve was not found in private checkpoints")
+    remote.KNOWN = known_candidates[0]
+    print(f"Using pinned Proxmox host key file: {remote.KNOWN}", flush=True)
+
 try:
     conn = remote.connect()
 finally:
