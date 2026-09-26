@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/deploy-current-launcher-control.yml'
       - 'tools/lab/deploy-native-launcher.py'
+      - 'tools/lab/deploy-launcher-assets-to-nas.py'
+      - 'apps/launcher/launcher-ui.js'
+      - 'apps/launcher/launcher.css'
       - 'remote-control/server.py'
       - 'remote-control/static/index.html'
       - 'remote-control/static/power-control.js'
@@ -63,3 +66,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/lab/deploy-native-launcher.py             server.py             static/index.html             static/power-control.js             static/launcher-admin.js             static/connections-ui.js             static/dashboard-control.js
+
+      - name: Deploy shared launcher assets to NAS
+        run: |
+          set -euo pipefail
+          python3 tools/lab/deploy-launcher-assets-to-nas.py
+
