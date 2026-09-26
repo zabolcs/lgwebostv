@@ -7,9 +7,9 @@ build- és átadási infrastruktúrája:
 - `hu.szabi.cameraviewer` 0.3.10: lapozható, 16:9-es kameranézet WebRTC-hanggal, állítható előnézeti frissítéssel és fekete indulóképpel;
 - `hu.szabi.remotemapper` 0.2.0: vizuális távirányító-szerkesztő a különálló fail-open Remote Brokerhez, Home Assistant webhook művelettel és fekete indulóképpel; a Home gomb
   külön figyelmeztetéssel, de visszaállíthatóan szerkeszthető, a védett gombok űrlapja rejtve marad;
-- `hu.szabi.launcher` 0.3.8: normál, nem transzparens `card` host a teljes kezdőfelülethez;
-- `hu.szabi.launcher.overlay` 0.3.8: `popup` host ugyanahhoz a teljes kezdőfelülethez;
-- `hu.szabi.launcher.quick` 0.3.8: transzparens `popup` host a gyorsmenühöz. A három csomag ugyanazt az `apps/launcher` runtime-ot használja, csak a webOS ablakmanifest és a generált hostazonosító tér el.
+- `hu.szabi.launcher` 0.3.29: normál, nem transzparens `card` host a teljes kezdőfelülethez;
+- `hu.szabi.launcher.overlay` 0.3.29: `popup` host ugyanahhoz a teljes kezdőfelülethez;
+- `hu.szabi.launcher.quick` 0.3.29: transzparens `popup` host a gyorsmenühöz. A három csomag ugyanazt az `apps/launcher` runtime-ot használja, csak a webOS ablakmanifest és a generált hostazonosító tér el.
 
 Az overlay alaphelyzete a bal felső sarok. A saját beállításaiban választható mind a négy sarok,
 a szélesség, magasság, vízszintes/függőleges margó és az automatikus bezárás ideje.
@@ -92,10 +92,14 @@ kötéseket a különálló `remote-broker` szigorú konfigurációjára fordít
 rendszerfolyamatba, és nincs tetszőleges shell-parancs a kliens felől. A fejléc a broker állapotát,
 illetve a régi natív hook esetleges jelenlétét is mutatja.
 
-## Launcher indítás és Home-kezelés, kiadás 0.3.8
+## Launcher indítás, Home-kezelés és webhook csempék
 
-A 0.3.8 kiadás a 0.3.7 stabilitási guardot és a frissített javítósegédet használja.
-A három launcher IPK verziója 0.3.8, felbontásuk 1920×1080.
+A jelenlegi launcher kiadás **0.3.29**. A Web sor csempéi Weboldal vagy Webhook módban használhatók; a webhookot közvetlenül a TV küldi GET vagy POST kéréssel, opcionális POST body-val. Részletes használat: [docs/launcher-webhook-hu.md](docs/launcher-webhook-hu.md).
+
+A korábbi 0.3.8 kiadás indítási és Home-kezelési alapjai továbbra is érvényesek.
+
+
+A három launcher IPK jelenlegi verziója 0.3.29, felbontásuk 1920×1080.
 A teljes/gyors menü és a rövid/hosszú Home hozzárendelése külön beállítás a teljes launcher
 `card` vagy `popup` megjelenítésétől.
 
