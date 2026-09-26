@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
 
+# trace v2
+
 jobs:
   read:
     runs-on: [self-hosted, Linux, X64]
