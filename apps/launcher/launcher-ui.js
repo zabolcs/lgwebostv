@@ -1002,10 +1002,7 @@
             });
             button.addEventListener('blur', function () {
               if (previewFocusTimer) { global.clearTimeout(previewFocusTimer); previewFocusTimer = null; }
-              if (activeLivePreview && activeLivePreview.image === image) {
-                activeLivePreview = null;
-                image.src = cacheBust(source);
-              }
+              if (activeLivePreview && activeLivePreview.button === button) stopActiveLivePreview();
             });
           }
         } else {
@@ -1047,10 +1044,7 @@
       if (previewTimer) { global.clearTimeout(previewTimer); previewTimer = null; }
       previewJobs.forEach(function (timer) { global.clearTimeout(timer); }); previewJobs = [];
       if (previewFocusTimer) { global.clearTimeout(previewFocusTimer); previewFocusTimer = null; }
-      if (activeLivePreview && activeLivePreview.image) {
-        activeLivePreview.image.removeAttribute('src');
-        activeLivePreview = null;
-      }
+      stopActiveLivePreview();
     }
 
     var popupParkTimer = null;
