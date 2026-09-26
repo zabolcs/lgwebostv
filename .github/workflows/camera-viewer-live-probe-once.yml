@@ -1,0 +1,21 @@
+name: Camera viewer live probe once
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/camera-viewer-live-probe-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Probe camera grid focused live mode
+        run: node tools/lab/camera-viewer-live-probe.mjs
