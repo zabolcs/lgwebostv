@@ -321,6 +321,64 @@ p {
   object-fit: cover;
 }
 
+.camera-grid-live {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.camera-grid-live-badge {
+  position: absolute;
+  z-index: 4;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(4, 10, 16, 0.74);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  pointer-events: none;
+  column-gap: 6px;
+}
+
+.camera-grid-live-badge::before {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4b55;
+  box-shadow: 0 0 9px rgba(255, 75, 85, 0.72);
+  content: "";
+  animation: camera-grid-live-dot 1.15s ease-in-out infinite;
+}
+
+@keyframes camera-grid-live-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.camera-tile.is-live .tile-shade,
+.camera-tile.is-live .tile-caption {
+  z-index: 2;
+}
+
 .tile-shade {
   position: absolute;
   right: 0;

@@ -750,11 +750,32 @@
     return result;
   }
 
+  function clearGridLivePreview(job) {
+    if (!job) return;
+    if (job.focusTimer) root.clearTimeout(job.focusTimer);
+    job.focusTimer = null;
+    if (job.liveImage) {
+      job.liveImage.onload = null;
+      job.liveImage.onerror = null;
+      job.liveImage.removeAttribute('src');
+      if (job.liveImage.parentNode) job.liveImage.parentNode.removeChild(job.liveImage);
+      job.liveImage = null;
+    }
+    if (job.liveBadge) {
+      if (job.liveBadge.parentNode) job.liveBadge.parentNode.removeChild(job.liveBadge);
+      job.liveBadge = null;
+    }
+    if (job.tile) job.tile.classList.remove('is-live');
+  }
+
   function stopGridJobs() {
     for (var i = 0; i < state.gridJobs.length; i += 1) {
       var job = state.gridJobs[i];
       job.stopped = true;
       if (job.timer) root.clearTimeout(job.timer);
+      clearGridLivePreview(job);
+      if (job.tile && job.onFocus) job.tile.removeEventListener('focus', job.onFocus);
+      if (job.tile && job.onBlur) job.tile.removeEventListener('blur', job.onBlur);
       job.image.onload = null;
       job.image.onerror = null;
       job.image.removeAttribute('src');
@@ -762,8 +783,20 @@
     state.gridJobs = [];
   }
 
-  function startGridSnapshot(image, profile, delay, statusNode) {
-    var job = { image: image, timer: null, stopped: false, failures: 0, requestStartedAt: 0 };
+  function startGridSnapshot(image, profile, delay, statusNode, tile) {
+    var job = {
+      image: image,
+      tile: tile,
+      timer: null,
+      focusTimer: null,
+      liveImage: null,
+      liveBadge: null,
+      onFocus: null,
+      onBlur: null,
+      stopped: false,
+      failures: 0,
+      requestStartedAt: 0
+    };
     state.gridJobs.push(job);
     function schedule(wait) {
       if (!job.stopped && !state.suspended) job.timer = root.setTimeout(refresh, wait);
@@ -773,6 +806,36 @@
       job.requestStartedAt = Date.now();
       image.src = cacheBusted(buildUrl(profile, 'snapshot'));
     }
+    function startLivePreview() {
+      job.focusTimer = null;
+      if (job.stopped || state.suspended || state.view !== 'grid' || root.document.activeElement !== tile) return;
+      clearGridLivePreview(job);
+      var liveImage = root.document.createElement('img');
+      var liveBadge = root.document.createElement('span');
+      liveImage.alt = '';
+      liveImage.className = 'camera-grid-live';
+      liveImage.setAttribute('data-live-mjpeg', buildUrl(profile, 'mjpeg'));
+      liveBadge.className = 'camera-grid-live-badge';
+      liveBadge.textContent = 'LIVE';
+      tile.appendChild(liveImage);
+      tile.appendChild(liveBadge);
+      job.liveImage = liveImage;
+      job.liveBadge = liveBadge;
+      tile.classList.add('is-live');
+      liveImage.onerror = function () {
+        if (job.liveImage === liveImage) clearGridLivePreview(job);
+      };
+      liveImage.src = buildUrl(profile, 'mjpeg');
+    }
+    job.onFocus = function () {
+      if (job.focusTimer) root.clearTimeout(job.focusTimer);
+      job.focusTimer = root.setTimeout(startLivePreview, 1000);
+    };
+    job.onBlur = function () {
+      clearGridLivePreview(job);
+    };
+    tile.addEventListener('focus', job.onFocus);
+    tile.addEventListener('blur', job.onBlur);
     image.onload = function () {
       job.failures = 0;
       statusNode.textContent = 'élő előnézet';
@@ -875,7 +938,7 @@
         cell.appendChild(tile);
         cell.appendChild(featureButton);
         ui.cameraGrid.appendChild(cell);
-        startGridSnapshot(image, profile, index * 280, status);
+        startGridSnapshot(image, profile, index * 280, status, tile);
       }(layout.items[i], i));
     }
     startScreenGuard();

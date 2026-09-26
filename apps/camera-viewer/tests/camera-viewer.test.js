@@ -27,7 +27,7 @@ function validProfile(overrides) {
 var appInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'appinfo.json'), 'utf8'));
 var packageInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'packageinfo.json'), 'utf8'));
 assert.strictEqual(appInfo.id, 'hu.szabi.cameraviewer');
-assert.strictEqual(appInfo.version, '0.3.12');
+assert.strictEqual(appInfo.version, '0.3.13');
 assert.strictEqual(appInfo.type, 'web');
 assert.strictEqual(appInfo.transparent, true);
 assert.strictEqual(appInfo.defaultWindowType, 'popup');
@@ -253,6 +253,11 @@ assert.ok(/camera-feature/.test(script));
 assert.ok(/toggleFeaturedCamera/.test(script));
 assert.ok(/cellWidth \* 9 \/ 16/.test(script));
 assert.ok(/\.camera-feature\.is-featured::after/.test(css));
+assert.ok(/buildUrl\(profile, 'mjpeg'\)/.test(script), 'A kijelölt grid kamera MJPEG-re váltson.');
+assert.ok(/setTimeout\(startLivePreview, 1000\)/.test(script), 'A gyors fókuszléptetés ne nyisson azonnal MJPEG streamet.');
+assert.ok(/addEventListener\('blur', job\.onBlur\)/.test(script), 'Fókuszvesztéskor álljon le a grid MJPEG stream.');
+assert.ok(/camera-grid-live-badge/.test(script + css), 'A grid MJPEG kapjon látható LIVE jelzést.');
+assert.ok(/right:\s*10px;[\s\S]*?bottom:\s*10px/.test(css), 'A LIVE jelzés a kamera jobb alsó sarkában legyen.');
 assert.strictEqual(/<iframe\b/i.test(html), false, 'A hosted player csak teljes nézetben jöjjön létre.');
 assert.ok(/id="viewer-mode"/.test(html), 'A teljes nézetben legyen MJPEG/WebRTC váltó.');
 assert.ok(script.includes(core.FULLSCREEN_TRANSPORT_KEY), 'A teljes nézet transport választása perzisztens legyen.');
@@ -279,4 +284,4 @@ assert.ok(/openViewer\(profile, true\)/.test(script));
 assert.ok(/closeViewer\(true\)/.test(script));
 assert.ok(/html,[\s\S]*body\s*\{[\s\S]*background:\s*transparent/.test(css));
 
-console.log('camera-viewer 0.3.11 overlay tests: PASS');
+console.log('camera-viewer 0.3.13 grid MJPEG tests: PASS');
