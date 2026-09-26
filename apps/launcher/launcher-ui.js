@@ -884,8 +884,10 @@
     function stopActiveLivePreview() {
       if (!activeLivePreview) return;
       var liveImage = activeLivePreview.image;
+      var liveBadge = activeLivePreview.badge;
       activeLivePreview = null;
       if (liveImage && liveImage.parentNode) liveImage.parentNode.removeChild(liveImage);
+      if (liveBadge && liveBadge.parentNode) liveBadge.parentNode.removeChild(liveBadge);
     }
     function localImageKey(kind, id) { return 'hu.szabi.launcher.image.' + kind + '.' + String(id || '').replace(/[^A-Za-z0-9._-]/g, '-'); }
     function readLocalImage(key) { try { return global.localStorage.getItem(key) || ''; } catch (ignore) { return ''; } }
@@ -993,8 +995,18 @@
                 liveImage.alt = '';
                 liveImage.className = 'launcher-camera-live';
                 liveImage.setAttribute('data-live-mjpeg', liveMjpegUrl);
+                var liveBadge = text(document.createElement('span'), 'LIVE');
+                liveBadge.className = 'launcher-camera-live-badge';
+                liveBadge.hidden = true;
                 media.appendChild(liveImage);
-                activeLivePreview = { button: button, image: liveImage };
+                media.appendChild(liveBadge);
+                activeLivePreview = { button: button, image: liveImage, badge: liveBadge };
+                liveImage.onload = function () {
+                  if (activeLivePreview && activeLivePreview.image === liveImage) liveBadge.hidden = false;
+                };
+                liveImage.onerror = function () {
+                  if (activeLivePreview && activeLivePreview.image === liveImage) stopActiveLivePreview();
+                };
                 liveImage.src = liveMjpegUrl;
               }, 1000);
             });
