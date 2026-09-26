@@ -38,7 +38,7 @@ function fixture(animationsEnabled = true) {
   };
   vm.createContext(context);
   vm.runInContext(functions('cancelPendingPopupPark', 'closeApplicationFallback') +
-    functions('parkLauncher', 'closeQuick') + method('prepareResume', 'setDisplayPreferences') +
+    functions('parkLauncher', 'closeQuick') + method('prepareResume', 'beginResumeLoading') +
     method('resume', 'setViewMode'), context);
   return {context, timers, cleared, classes, calls};
 }
