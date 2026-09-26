@@ -1,6 +1,6 @@
 {
   "id": "hu.szabi.launcher.overlay",
-  "version": "0.3.16",
+  "version": "0.3.17",
   "vendor": "Szabolcs",
   "type": "web",
   "main": "index.html",
