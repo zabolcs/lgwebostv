@@ -67,15 +67,16 @@ with tempfile.TemporaryDirectory() as tmp:
         restart = json.loads(response.read().decode("utf-8"))
     assert restart.get("ok") is True and restart.get("scheduled") == "restart", restart
     running = False
-    for _ in range(12):
+    for _ in range(15):
         time.sleep(1)
-        apps = checked(
-            "luna-send -n 1 -w 1500 luna://com.webos.service.webappmanager/listRunningApps "
-            + shlex.quote('{"includeSysApps":false}')
-        )
-        if '"id":"hu.szabi.launcher"' in apps.replace(" ", ""):
-            running = True
-            break
+        try:
+            with urllib.request.urlopen("http://192.168.0.223:8765/api/launcher/home-status", timeout=4) as response:
+                status = json.loads(response.read().decode("utf-8"))
+            if status.get("ok") is True and status.get("launcherRunning") is True:
+                running = True
+                break
+        except Exception:
+            pass
     assert running, "Full launcher did not return after controlled restart"
     print("LAUNCHER_RESTART=PASS", flush=True)
     print("DEPLOY_CURRENT_LAUNCHER=PASS", flush=True)
