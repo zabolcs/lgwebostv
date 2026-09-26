@@ -1,0 +1,80 @@
+name: Deploy long Back launcher fix
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - '.github/workflows/deploy-long-back-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-long-back-fix
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          clean: false
+
+      - name: Isolated Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install transport dependency
+        run: python -m pip install --disable-pip-version-check --quiet 'paramiko==3.5.1'
+
+      - name: Validate source and regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v arm-linux-gnueabi-gcc
+          python -m py_compile remote-control/server.py tools/lab/deploy-long-back-fix.py tools/lab/deploy-native-launcher.py
+          sh -n tools/generated-tv-scripts/home-key.sh
+          make -C remote-broker clean all
+          python remote-control/tests/test_server.py
+
+      - name: Deploy TV broker and long Back action
+        run: python tools/lab/deploy-long-back-fix.py
+
+      - name: Locate private transport helper
+        id: transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
+          test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
+          echo "dir=$(dirname "$REMOTE_PY")" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy matching control backend
+        shell: bash
+        env:
+          REMOTE_HELPER_DIR: ${{ steps.transport.outputs.dir }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$REMOTE_HELPER_DIR${PYTHONPATH:+:$PYTHONPATH}" python tools/lab/deploy-native-launcher.py server.py
+
+      - name: Verify live TV long Back contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          KNOWN="$(mktemp)"
+          trap 'rm -f "$KNOWN"' EXIT
+          ssh-keyscan -T 3 192.168.0.240 >"$KNOWN" 2>/dev/null
+          SSH=(ssh -T -i /media/lgtv/id_rsa -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$KNOWN" root@192.168.0.240)
+          "${SSH[@]}" "set -eu;
+            grep -qx '412=long-action' /var/lib/webosbrew/remote-broker/bindings.conf;
+            test -x /var/lib/webosbrew/remote-broker/actions/412;
+            grep -q 'LAUNCHER_HOME_FORCE_MODE=full' /var/lib/webosbrew/remote-broker/actions/412;
+            grep -q 'FORCE_MODE=' /var/lib/webosbrew/launcher-home/home-key.sh;
+            /var/lib/webosbrew/remote-broker/remote-broker --config /var/lib/webosbrew/remote-broker/bindings.conf --check-config;
+            echo LONG_BACK_LIVE_CONTRACT=PASS"
