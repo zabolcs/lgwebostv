@@ -10,8 +10,6 @@ on:
 permissions:
   contents: read
 
-# deploy helper v2
-
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64]
@@ -21,73 +19,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate helper
-        run: python3 -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
+      - name: Isolated Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
 
-      - name: Probe runner Python SSH support
-        run: |
-          set -e
-          echo "python=$(python3 --version 2>&1)"
-          if python3 -c 'import paramiko' 2>/dev/null; then
-            echo "PARAMIKO_SYSTEM=YES"
-          else
-            echo "PARAMIKO_SYSTEM=NO"
-          fi
-          if sudo -n true 2>/dev/null; then
-            echo "SUDO_NONINTERACTIVE=YES"
-          else
-            echo "SUDO_NONINTERACTIVE=NO"
-          fi
-          FOUND="$(find /media/lgtv /home/actions -type d -path '*/site-packages/paramiko' -print -quit 2>/dev/null || true)"
-          if [ -n "$FOUND" ]; then
-            echo "PARAMIKO_SITE=$(dirname "$FOUND")"
-          else
-            echo "PARAMIKO_SITE=NONE"
-          fi
+      - name: Install transport dependency
+        run: python -m pip install --disable-pip-version-check --quiet 'paramiko==3.5.1'
+
+      - name: Validate helper
+        run: python -m py_compile tools/lab/deploy-native-launcher.py remote-control/server.py
 
       - name: Deploy server only
+        shell: bash
         run: |
           set -euo pipefail
           REMOTE_PY="$(find /media/lgtv /home/actions/lgtv-import -type f -path '*/tools/remote.py' -print -quit 2>/dev/null || true)"
-          OLD_FILE="$(grep -RIl --include='*.md' -- '- SSH jelszó: `' /media/lgtv /home/actions/lgtv-import 2>/dev/null | head -1 || true)"
           test -n "$REMOTE_PY" || { echo "remote.py checkpoint helper not found" >&2; exit 1; }
-          test -n "$OLD_FILE" || { echo "legacy LGTV credential checkpoint not found" >&2; exit 1; }
-
-          PATCHED_REMOTE_DIR="$(mktemp -d)"
-          KNOWN_FILE="$PATCHED_REMOTE_DIR/known_hosts.pve"
-          ssh-keyscan -T 3 192.168.0.120 >"$KNOWN_FILE" 2>/dev/null
-          test -s "$KNOWN_FILE" || { echo "PVE host key could not be read" >&2; exit 1; }
-          trap 'rm -rf "$PATCHED_REMOTE_DIR"' EXIT
-          REMOTE_PY="$REMOTE_PY" OLD_FILE="$OLD_FILE" KNOWN_FILE="$KNOWN_FILE" PATCHED_REMOTE_DIR="$PATCHED_REMOTE_DIR" python3 - <<'PY'
-          import os, re
-          from pathlib import Path
-          source = Path(os.environ["REMOTE_PY"]).read_text(encoding="utf-8")
-          source, old_count = re.subn(
-              r"(?m)^OLD\s*=\s*Path\([^\n]+\)\s*$",
-              "OLD = Path(" + repr(os.environ["OLD_FILE"]) + ")",
-              source,
-              count=1,
-          )
-          source, known_count = re.subn(
-              r"(?m)^KNOWN\s*=\s*[^\n]+$",
-              "KNOWN = " + repr(os.environ["KNOWN_FILE"]),
-              source,
-              count=1,
-          )
-          if old_count != 1 or known_count != 1:
-              raise SystemExit("legacy remote helper path patch failed")
-          target = Path(os.environ["PATCHED_REMOTE_DIR"]) / "remote.py"
-          target.write_text(source, encoding="utf-8")
-          print("Prepared legacy remote helper with local checkpoint paths.")
-          PY
-
-          PARAMIKO_DIR="$(find /home/actions/lgtv-runner/_work/_tool/Python -type d -path '*/site-packages/paramiko' -print -quit 2>/dev/null || true)"
-          test -n "$PARAMIKO_DIR" || { echo "Paramiko runner environment not found" >&2; exit 1; }
-          PARAMIKO_SITE="$(dirname "$PARAMIKO_DIR")"
-          PYROOT="$(printf '%s\n' "$PARAMIKO_SITE" | sed -E 's#/lib/python[0-9.]+/site-packages$##')"
-          PYTHON="$PYROOT/bin/python3"
-          test -x "$PYTHON"
-          export LD_LIBRARY_PATH="$PYROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          "$PYTHON" -c 'import paramiko'
-          echo "Using runner Python: $PYTHON"
-          PYTHONPATH="$PATCHED_REMOTE_DIR${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" tools/lab/deploy-native-launcher.py server.py
+          echo "Using private transport helper."
+          PYTHONPATH="$(dirname "$REMOTE_PY")${PYTHONPATH:+:$PYTHONPATH}" python tools/lab/deploy-native-launcher.py server.py
