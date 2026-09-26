@@ -27,7 +27,7 @@ function validProfile(overrides) {
 var appInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'appinfo.json'), 'utf8'));
 var packageInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'packageinfo.json'), 'utf8'));
 assert.strictEqual(appInfo.id, 'hu.szabi.cameraviewer');
-assert.strictEqual(appInfo.version, '0.3.17');
+assert.strictEqual(appInfo.version, '0.3.18');
 assert.strictEqual(appInfo.type, 'web');
 assert.strictEqual(appInfo.transparent, true);
 assert.strictEqual(appInfo.defaultWindowType, 'popup');
