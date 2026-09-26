@@ -4,7 +4,7 @@ on:
   push:
     branches: [develop]
     paths:
-      - '.github/workflows/install-camera-viewer-v0313-once.yml'
+      - '.github/workflows/install-camera-viewer-v0312-once.yml'
 
 permissions:
   contents: read
@@ -54,7 +54,7 @@ jobs:
           "${SCP[@]}" build/hu.szabi.cameraviewer_0.3.13_all.ipk "root@192.168.0.240:$STAGE/hu.szabi.cameraviewer_0.3.13_all.ipk"
           SHA="$(sha256sum build/hu.szabi.cameraviewer_0.3.13_all.ipk | awk '{print $1}')"
           "${SSH[@]}" "sh '$STAGE/install.sh' '$STAGE/hu.szabi.cameraviewer_0.3.13_all.ipk' '$SHA'"
-          "${SSH[@]}" "grep -Eq '\"version\"[[:space:]]*:[[:space:]]*\"0[.]3[.]12\"' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/appinfo.json"
+          "${SSH[@]}" "grep -Eq '\"version\"[[:space:]]*:[[:space:]]*\"0[.]3[.]13\"' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/appinfo.json"
           "${SSH[@]}" "grep -q 'FULLSCREEN_TRANSPORT_KEY' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/app.js"
           "${SSH[@]}" "grep -q 'viewer-mode' /media/developer/apps/usr/palm/applications/hu.szabi.cameraviewer/index.html"
           echo "CAMERA_VIEWER_0313_INSTALL=PASS"
