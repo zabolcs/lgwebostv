@@ -144,6 +144,9 @@
     var previousFocus = null;
     var okHoldTimer = null;
     var okHeld = false;
+    var backPressed = false;
+    var backHeld = false;
+    var resumeLoadingGeneration = 0;
     var editingTileId = '';
     var editMode = null;
     var appPickerActive = false;
@@ -198,6 +201,60 @@
         else { cover.classList.add('ready'); global.setTimeout(function () { cover.hidden = true; }, 180); }
       }
     }
+    function setBootCoverState(active, resumeMode) {
+      var cover = document.getElementById('launcher-boot');
+      if (!cover) return;
+      cover.hidden = !active;
+      cover.classList.toggle('resume-loading', !!resumeMode);
+      cover.classList.remove('ready');
+      if (active) {
+        cover.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('launcher-loading-active');
+      } else {
+        cover.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('launcher-loading-active');
+      }
+    }
+    function finishResumeLoading(generation, minimumMs, startedAt) {
+      function finishFrame() {
+        if (generation !== resumeLoadingGeneration) return;
+        var elapsed = Date.now() - startedAt;
+        var remaining = Math.max(0, minimumMs - elapsed);
+        global.setTimeout(function () {
+          if (generation !== resumeLoadingGeneration) return;
+          var cover = document.getElementById('launcher-boot');
+          document.body.classList.remove('launcher-loading-active');
+          if (!cover) return;
+          cover.classList.add('ready');
+          global.setTimeout(function () {
+            if (generation !== resumeLoadingGeneration) return;
+            cover.hidden = true;
+            cover.classList.remove('resume-loading', 'ready');
+            cover.setAttribute('aria-hidden', 'true');
+          }, 220);
+        }, remaining);
+      }
+      if (typeof global.requestAnimationFrame === 'function') {
+        global.requestAnimationFrame(function () { global.requestAnimationFrame(finishFrame); });
+      } else global.setTimeout(finishFrame, 100);
+    }
+    function beginResumeLoading(minimumMs) {
+      if (mode !== 'tv' || viewMode !== 'full') return;
+      var generation = ++resumeLoadingGeneration;
+      var startedAt = Date.now();
+      setBootCoverState(true, true);
+      // A stalled renderer naturally delays this callback. That makes the
+      // cover remain visible for the period in which input would not respond.
+      global.setTimeout(function () {
+        if (generation !== resumeLoadingGeneration) return;
+        finishResumeLoading(generation, Math.max(700, Number(minimumMs || 1600)), startedAt);
+      }, 0);
+    }
+    function cancelResumeLoading() {
+      resumeLoadingGeneration += 1;
+      setBootCoverState(false, false);
+    }
+
     function bootTrack(image) {
       // Network images must never keep the launcher input-blocked.  Fallbacks
       // appear later if needed, while the UI becomes usable after first paint.
@@ -686,6 +743,7 @@
       function resetRemotePress() {
         if (okHoldTimer) global.clearTimeout(okHoldTimer);
         okHoldTimer = null; okHeld = false;
+        backPressed = false; backHeld = false;
       }
       // Retained cards can receive stale input while their native surface is
       // hidden. Never let those events launch an app or return to the last app.
@@ -694,7 +752,9 @@
       document.addEventListener('keydown', function (event) {
         if (document.hidden || parked) { resetRemotePress(); return; }
         if (event.repeat && (event.keyCode === 461 || event.keyCode === 27)) {
-          event.preventDefault(); return;
+          event.preventDefault(); event.stopPropagation();
+          backHeld = true;
+          return;
         }
         if (handleSettingsKey(event)) return;
         if (viewMode === 'overlay') { handleQuickKey(event); return; }
@@ -741,13 +801,25 @@
           return;
         }
         if (code === 461 || code === 27) {
-          var overlay = Array.prototype.filter.call(root.querySelectorAll('.launcher-overlay'), function (item) { return !item.hidden; })[0];
-          event.preventDefault();
-          if (overlay) closeOverlays(); else parkLauncher(true);
+          // Do not hide on key-down. A long Back generates repeat events on
+          // webOS; hiding on the first down exposed LG Home for a visible beat.
+          // Short Back is committed on key-up, while long Back stays consumed.
+          event.preventDefault(); event.stopPropagation();
+          backPressed = true;
+          return;
         }
       });
       document.addEventListener('keyup', function (event) {
         if (document.hidden || parked) { resetRemotePress(); return; }
+        if (event.keyCode === 461 || event.keyCode === 27) {
+          event.preventDefault(); event.stopPropagation();
+          var commitBack = backPressed && !backHeld;
+          backPressed = false; backHeld = false;
+          if (!commitBack) return;
+          var backOverlay = Array.prototype.filter.call(root.querySelectorAll('.launcher-overlay'), function (item) { return !item.hidden; })[0];
+          if (backOverlay) closeOverlays(); else parkLauncher(true);
+          return;
+        }
         var settings = root.querySelector('#launcher-settings');
         if (settings && !settings.hidden && event.keyCode === 13) { event.preventDefault(); return; }
         if (viewMode === 'overlay') return;
@@ -1903,6 +1975,8 @@
     }
     var controller = {
       prepareResume: function () { cancelPendingPopupPark(); },
+      beginResumeLoading: beginResumeLoading,
+      cancelResumeLoading: cancelResumeLoading,
       setDisplayPreferences: function (preferences) {
         if (!data || !data.config) return;
         ['animationsEnabled', 'visualEffectsEnabled'].forEach(function (key) {
