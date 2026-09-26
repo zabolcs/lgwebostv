@@ -169,7 +169,9 @@ const result = await evaluate(page, `
       tile.focus();
       await sleep(1250);
       var liveLayer = tile.querySelector('img.launcher-camera-live');
+      var liveBadge = tile.querySelector('.launcher-camera-live-badge');
       var live = liveLayer ? (liveLayer.src || liveLayer.getAttribute('data-live-mjpeg') || '') : '';
+      cameraResult.badgeVisible = !!liveBadge && !liveBadge.hidden;
       testButton.focus();
       await sleep(180);
       var afterLayer = tile.querySelector('img.launcher-camera-live');
@@ -195,6 +197,6 @@ console.log(result);
 const parsed = JSON.parse(result);
 if (!parsed.input.blocked) throw new Error('LOADING_INPUT_LOCK=FAIL');
 if (!parsed.camera.available || !parsed.camera.imageAvailable) throw new Error('CAMERA_PREVIEW_TILE=FAIL');
-if (!parsed.camera.promoted || !parsed.camera.restored) throw new Error('CAMERA_FOCUS_MJPEG=FAIL');
+if (!parsed.camera.promoted || !parsed.camera.restored || !parsed.camera.badgeVisible) throw new Error('CAMERA_FOCUS_MJPEG=FAIL');
 console.log('LOADING_INPUT_LOCK=PASS');
 console.log('CAMERA_FOCUS_MJPEG=PASS');
