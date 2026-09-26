@@ -20,7 +20,7 @@ def run(args, timeout=60):
                        text=True, timeout=timeout, check=True)
     return p.stdout.strip()
 
-subprocess.run(["make", "-C", str(BROKER_DIR), "clean", "all"], check=True)
+compiler = os.environ.get("BROKER_CC", "").strip()\nif not compiler:\n    raise RuntimeError("BROKER_CC is required for the ARM broker build")\nsubprocess.run(["make", "-C", str(BROKER_DIR), "clean", "all", "CC=" + compiler], check=True)
 digest = hashlib.sha256(BROKER.read_bytes()).hexdigest()
 
 with tempfile.TemporaryDirectory() as temporary:
