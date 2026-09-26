@@ -997,13 +997,9 @@
                 liveImage.setAttribute('data-live-mjpeg', liveMjpegUrl);
                 var liveBadge = text(document.createElement('span'), 'LIVE');
                 liveBadge.className = 'launcher-camera-live-badge';
-                liveBadge.hidden = true;
                 media.appendChild(liveImage);
                 media.appendChild(liveBadge);
                 activeLivePreview = { button: button, image: liveImage, badge: liveBadge };
-                liveImage.onload = function () {
-                  if (activeLivePreview && activeLivePreview.image === liveImage) liveBadge.hidden = false;
-                };
                 liveImage.onerror = function () {
                   if (activeLivePreview && activeLivePreview.image === liveImage) stopActiveLivePreview();
                 };
